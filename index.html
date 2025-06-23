@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Editor Markdown a Unicode Facebook</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    body {
+      background-color: #18191a;
+      color: #e4e6eb;
+      min-height: 100vh;
+    }
+    .editor,
+    .output {
+      background: #242526;
+      border: none;
+      border-radius: 8px;
+      color: #e4e6eb;
+      resize: none;
+      min-height: 200px;
+      font-size: 1rem;
+      padding: 1rem;
+      width: 100%;
+      margin-bottom: 1rem;
+    }
+    .output {
+      font-family: inherit;
+      white-space: pre-wrap;
+      word-break: break-word;
+      cursor: pointer;
+      user-select: all;
+    }
+    .copy-btn {
+      background: #3a3b3c;
+      color: #e4e6eb;
+      border: none;
+      border-radius: 6px;
+      padding: 0.5rem 1rem;
+      transition: background 0.2s;
+    }
+    .copy-btn:hover {
+      background: #4e4f50;
+    }
+    label {
+      color: #b0b3b8;
+      margin-bottom: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container py-5">
+    <h2 class="mb-4 text-center">Editor Markdown a Unicode Facebook</h2>
+    <div class="row g-4">
+      <div class="col-md-6">
+        <label for="markdown" class="form-label">Editor Markdown</label>
+        <div id="formatButtons" style="display: none; margin-bottom: 0.5rem;">
+          <button class="copy-btn me-2" onclick="wrapSelectionWithBold()" tabindex="-1">Negritas **</button>
+          <button class="copy-btn" onclick="wrapSelectionWithItalic()" tabindex="-1">Itálicas *</button>
+        </div>
+        <textarea id="markdown" class="editor" placeholder="Escribe o pega tu texto en Markdown aquí..."></textarea>
+      </div>
+      <div class="col-md-6">
+        <label for="output" class="form-label">Texto para Facebook</label>
+        <button class="copy-btn mb-2 float-end" id="copyBtn">Copiar</button>
+        <div id="output" class="output" tabindex="0" readonly></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    const markdownInput = document.getElementById('markdown');
+    const outputDiv = document.getElementById('output');
+    const formatButtons = document.getElementById('formatButtons');
+
+    function wrapSelectionWithBold() {
+      const start = markdownInput.selectionStart;
+      const end = markdownInput.selectionEnd;
+      if (start === end) return;
+      const before = markdownInput.value.substring(0, start);
+      const selected = markdownInput.value.substring(start, end);
+      const after = markdownInput.value.substring(end);
+      markdownInput.value = before + '**' + selected + '**' + after;
+      markdownInput.selectionStart = start;
+      markdownInput.selectionEnd = end + 4;
+      markdownInput.focus();
+      markdownInput.dispatchEvent(new Event('input'));
+    }
+
+    function wrapSelectionWithItalic() {
+      const start = markdownInput.selectionStart;
+      const end = markdownInput.selectionEnd;
+      if (start === end) return;
+      const before = markdownInput.value.substring(0, start);
+      const selected = markdownInput.value.substring(start, end);
+      const after = markdownInput.value.substring(end);
+      markdownInput.value = before + '*' + selected + '*' + after;
+      markdownInput.selectionStart = start;
+      markdownInput.selectionEnd = end + 2;
+      markdownInput.focus();
+      markdownInput.dispatchEvent(new Event('input'));
+    }
+
+    function markdownToFacebookUnicode(md) {
+      md = md.replace(/(\*\*|__)(.*?)\1/g, (_, __, text) => toBold(text));
+      md = md.replace(/(\*|_)(.*?)\1/g, (_, __, text) => toItalic(text));
+      md = md.replace(/~~(.*?)~~/g, (_, text) => `~${text}~`);
+      md = md.replace(/`([^`]+)`/g, (_, text) => '`' + text + '`');
+      md = md.replace(/\r\n|\r|\n/g, '\n');
+      return md;
+    }
+
+    function toBold(str) {
+      return str.replace(/[A-Za-z0-9]/g, c => {
+        if ('A' <= c && c <= 'Z') return String.fromCodePoint(c.charCodeAt(0) + 0x1d400 - 0x41);
+        if ('a' <= c && c <= 'z') return String.fromCodePoint(c.charCodeAt(0) + 0x1d41a - 0x61);
+        if ('0' <= c && c <= '9') return String.fromCodePoint(c.charCodeAt(0) + 0x1d7ce - 0x30);
+        return c;
+      });
+    }
+
+    function toItalic(str) {
+      return str.replace(/[A-Za-z]/g, c => {
+        if ('A' <= c && c <= 'Z') return String.fromCodePoint(c.charCodeAt(0) + 0x1d434 - 0x41);
+        if ('a' <= c && c <= 'z') return String.fromCodePoint(c.charCodeAt(0) + 0x1d44e - 0x61);
+        return c;
+      });
+    }
+
+    markdownInput.addEventListener('input', () => {
+      outputDiv.textContent = markdownToFacebookUnicode(markdownInput.value);
+    });
+
+    markdownInput.addEventListener('select', () => {
+      const hasSelection = markdownInput.selectionStart !== markdownInput.selectionEnd;
+      formatButtons.style.display = hasSelection ? 'block' : 'none';
+    });
+
+    markdownInput.addEventListener('blur', () => {
+      setTimeout(() => {
+        const active = document.activeElement;
+        if (!formatButtons.contains(active)) {
+          formatButtons.style.display = 'none';
+        }
+      }, 150);
+    });
+
+    document.getElementById('copyBtn').addEventListener('click', () => {
+      const text = outputDiv.textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('copyBtn');
+        btn.textContent = '¡Copiado!';
+        setTimeout(() => (btn.textContent = 'Copiar'), 1200);
+      });
+    });
+
+    outputDiv.textContent = '';
+  </script>
+</body>
+</html>
