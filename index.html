@@ -3,43 +3,207 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Editor Markdown a Unicode Facebook (Mejorado)</title>
+  <title>Simply Unicode Editor</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Roboto:wght@300;400;700;900&family=Roboto+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="container py-5">
-    <h2 class="mb-4 text-center">Editor Markdown a Unicode Facebook</h2>
-    <div class="row g-4">
-      <div class="col-md-6">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-            <label for="markdown" class="form-label mb-0">Editor Markdown</label>
+  <div class="app-container">
+    <header class="app-header sticky-top">
+      <div class="header-left d-flex align-items-center gap-3">
+        <h2 class="m-0">SIMPLY <span>APPS</span></h2>
+        <div class="dropdown">
+          <button class="action-btn dropdown-toggle" type="button" id="toneDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+            🎭 Tono: <span id="currentToneLabel">Coloquial</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="toneDropdown">
+            <li><a class="dropdown-item tone-option" href="#" data-value="fb_col">😊 Coloquial</a></li>
+            <li><a class="dropdown-item tone-option" href="#" data-value="fb_com">💼 Comercial</a></li>
+            <li><a class="dropdown-item tone-option" href="#" data-value="fb_neu">⚖️ Neutro</a></li>
+          </ul>
         </div>
-        <div class="editor-controls">
-          <button id="pegarBtn" class="copy-btn">Pegar</button>
-          <button id="limpiarBtn" class="copy-btn">Limpiar</button>
-          <div id="formatButtons" style="display: none;">
-            <button id="boldBtn" class="copy-btn" tabindex="-1">Negritas **</button>
-            <button id="italicBtn" class="copy-btn" tabindex="-1">Itálicas *</button>
+      </div>
+
+      <div class="header-center d-flex gap-2">
+        <button id="pensarBtn" class="action-btn ai-btn" title="Reflexión IA (donalex:1717)">🧠 Pensar</button>
+        <button id="investigarBtn" class="action-btn ai-btn" title="Investigar tema con Scrapling">🔍 Investigar</button>
+        <button id="emojiBtn" class="action-btn" title="Insertar Emoji">😊</button>
+        <button id="limpiarGatosBtn" class="action-btn" title="Quitar solo los #">Limpiar #</button>
+        <button id="borrarComentariosBtn" class="action-btn" title="Borrar líneas #">Borrar Comentarios</button>
+      </div>
+
+      <div class="header-right d-flex gap-2">
+        <button id="themeToggle" class="action-btn" title="Cambiar Tema">🎨 Tema</button>
+        <div class="btn-group">
+          <button id="cargarArchivoBtn" class="action-btn" title="Cargar archivo">📁 Cargar</button>
+          <button type="button" class="action-btn dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            💾 Guardar / Exportar
+          </button>
+          <ul class="dropdown-menu dropdown-menu-dark">
+            <li><a class="dropdown-item" href="#" id="guardarArchivoBtn">💾 Guardar Markdown (.md)</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="#" id="exportWordBtn">📄 Exportar a Word (.docx)</a></li>
+            <li><a class="dropdown-item" href="#" id="exportExcelBtn">📊 Exportar a Excel (.xlsx)</a></li>
+            <li><a class="dropdown-item" href="#" id="exportHtmlBtn">🌐 Exportar a HTML (.html)</a></li>
+          </ul>
+          <button id="pegarBtn" class="action-btn">📋 Pegar</button>
+          <button id="limpiarBtn" class="action-btn btn-danger-soft">🗑️ Limpiar</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="row g-4 mt-2">
+      <div class="col-md-6">
+        <div class="pane-container">
+          <div class="pane-toolbar justify-content-between">
+            <span class="toolbar-title">Editor Markdown</span>
+          </div>
+          <div class="editor-inner">
+            <textarea id="editor"></textarea>
+          </div>
+          <div id="stats-panel" class="stats-panel d-flex justify-content-between">
+            <span>Caracteres: <b id="char-count">0</b></span>
+            <span>Palabras: <b id="word-count">0</b></span>
           </div>
         </div>
-        <div class="editor-container">
-          <pre id="highlighter" class="highlighter-layer"></pre>
-          <textarea id="markdown" class="editor" placeholder="Escribe o pega tu texto en Markdown aquí..." spellcheck="false"></textarea>
+        <input type="file" id="archivoInput" accept=".md,.txt,.markdown" style="display: none;" />
+      </div>
+
+      <div class="col-md-6">
+        <div class="pane-container h-100 d-flex flex-column">
+          <div class="pane-tabs">
+            <button id="tabFB" class="tab-btn active" data-target="output-fb-container">🚀 FB</button>
+            <button id="tabX" class="tab-btn" data-target="output-x-container">🐦 X</button>
+            <button id="tabLI" class="tab-btn" data-target="output-li-container">💼 LI</button>
+            <button id="tabConfig" class="tab-btn" data-target="config-container">⚙️ Config</button>
+          </div>
+
+          <div id="output-fb-container" class="tab-content active flex-grow-1">
+            <div id="output" class="output" tabindex="0"></div>
+            <div class="pane-footer d-flex justify-content-end p-2 bg-black-20">
+              <button class="copy-btn-sm" id="copyBtn">📋 Copiar FB</button>
+            </div>
+          </div>
+
+          <div id="output-x-container" class="tab-content flex-grow-1">
+            <div id="outputX" class="output-x flex-grow-1" tabindex="0"></div>
+            <div class="pane-footer d-flex justify-content-between align-items-center p-2 bg-black-20">
+              <span id="x-counter" class="stats-badge">280</span>
+              <div class="d-flex gap-2">
+                <button class="action-btn-sm ai-btn" id="genXBtn">✨ Generar X</button>
+                <button class="copy-btn-sm" id="copyXBtn">📋 Copiar X</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="output-li-container" class="tab-content flex-grow-1">
+            <div id="outputLI" class="output-li flex-grow-1" tabindex="0"></div>
+            <div class="pane-footer d-flex justify-content-between align-items-center p-2 bg-black-20">
+              <span class="stats-badge">LinkedIn Insight</span>
+              <div class="d-flex gap-2">
+                <button class="action-btn-sm ai-btn" id="genLIBtn">✨ Generar LI</button>
+                <button class="copy-btn-sm" id="copyLIBtn">📋 Copiar LI</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="config-container" class="tab-content flex-grow-1 p-3 overflow-y-auto" style="height: 550px;">
+            <div class="mb-3">
+              <label class="form-label small fw-bold text-dim">Prompt FB - Coloquial</label>
+              <textarea id="promptFB_col" class="form-control form-control-sm bg-dark text-white border-secondary" rows="3"></textarea>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-bold text-dim">Prompt FB - Comercial</label>
+              <textarea id="promptFB_com" class="form-control form-control-sm bg-dark text-white border-secondary" rows="3"></textarea>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-bold text-dim">Prompt FB - Neutro</label>
+              <textarea id="promptFB_neu" class="form-control form-control-sm bg-dark text-white border-secondary" rows="3"></textarea>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-bold text-dim">Prompt X (Twitter)</label>
+              <textarea id="promptX" class="form-control form-control-sm bg-dark text-white border-secondary" rows="3"></textarea>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-bold text-dim">Prompt LinkedIn</label>
+              <textarea id="promptLI" class="form-control form-control-sm bg-dark text-white border-secondary" rows="3"></textarea>
+            </div>
+            <div class="d-flex gap-2">
+              <button id="saveConfigBtn" class="btn btn-sm btn-primary w-100">💾 Guardar Prompts</button>
+              <button id="resetPromptsBtn" class="btn btn-sm btn-outline-danger w-100">🔄 Restablecer</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-4 d-grid">
+          <button id="vaultBtn" class="action-btn-lg vault-btn">🗄️ Archivar en Vault</button>
         </div>
       </div>
-      <div class="col-md-6">
-        <label for="output" class="form-label">Texto para Facebook</label>
-        <button class="copy-btn mb-2 float-end" id="copyBtn">Copiar</button>
-        <div id="output" class="output" tabindex="0" readonly></div>
-      </div>
-    </div>
-    <div class="credit">
+    </main>
+
+    <footer class="credit mt-5">
       Creado con ❤️ por <a href="https://github.com/alexdechile" target="_blank" rel="noopener noreferrer">alexdechile</a>
+    </footer>
+  </div>
+
+  <!-- Modal de Investigación -->
+  <div class="modal fade" id="researchModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content bg-dark text-white border-secondary shadow-lg">
+        <div class="modal-header border-secondary">
+          <h5 class="modal-title">🔍 Refinar Investigación</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small text-secondary mb-2">Términos de búsqueda:</p>
+          <textarea id="searchQueryInput" class="form-control bg-black text-white border-secondary mb-3" rows="2" style="font-family: monospace;"></textarea>
+          
+          <p class="small text-secondary mb-2">Enfoque / Tendencias (ej: Neurociencia, Psicología, Economía):</p>
+          <input type="text" id="trendsInput" class="form-control bg-black text-white border-secondary mb-3" placeholder="Sugeridas por IA...">
+          
+          <p class="small text-secondary mb-1">Profundidad:</p>
+          <div class="d-flex gap-3 mb-3">
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="researchDepth" id="depthSencilla" value="sencilla" checked>
+              <label class="form-check-label small text-white" for="depthSencilla">Sencilla</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="researchDepth" id="depthProfunda" value="profunda">
+              <label class="form-check-label small text-white" for="depthProfunda">Profunda (Fuentes.md)</label>
+            </div>
+          </div>
+
+          <div id="researchStatus" class="small text-info d-none">
+            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+            Investigando con Scrapling... por favor espera.
+          </div>
+        </div>
+        <div class="modal-footer border-secondary">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" id="startResearchBtn" class="btn btn-sm btn-primary ai-btn">Lanzar Investigación 🚀</button>
+        </div>
+      </div>
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="script.js" defer></script>
+  <div id="format-menu" class="format-menu">
+    <button class="menu-btn" data-style="bold" title="Negrita">B</button>
+    <button class="menu-btn" data-style="italic" title="Cursiva">I</button>
+    <button class="menu-btn" data-style="script" title="Elegante (Script)">𝒮</button>
+    <button class="menu-btn" data-style="fraktur" title="Gótico (Fraktur)">𝔊</button>
+    <button class="menu-btn" data-style="double" title="Doble Trazo (Outline)">𝔻</button>
+    <button class="menu-btn" data-style="sansbold" title="Sans Negrita">𝗦</button>
+    <button class="menu-btn" data-style="circled" title="En Círculos">Ⓐ</button>
+    <button class="menu-btn" data-style="squared" title="En Cuadros">🄰</button>
+    <button class="menu-btn" data-style="fullwidth" title="Ancho Completo">Ｗ</button>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
