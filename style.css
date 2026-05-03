@@ -407,3 +407,39 @@ body.theme-sketch .output-li {
 /* Overrides */
 .EasyMDEContainer { border: none !important; }
 .editor-toolbar { display: none !important; }
+
+/* Modal de Investigación — Slide Animation + Z-index Fix */
+#researchModal {
+  z-index: 5000 !important;
+}
+
+#researchModal.show .modal-dialog {
+  animation: slideInDialog 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+#researchModal.closing .modal-dialog {
+  animation: slideOutDialog 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes slideInDialog {
+  0% { transform: translateY(-40px) scale(0.97); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+@keyframes slideOutDialog {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  100% { transform: translateY(-40px) scale(0.97); opacity: 0; }
+}
+
+.modal-backdrop.show {
+  z-index: 4999 !important;
+}
+
+#researchResultsFooter .btn { min-width: 120px; }
+
+#researchSynthesis {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  tab-size: 2;
+}

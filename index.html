@@ -30,6 +30,7 @@
       <div class="header-center d-flex gap-2">
         <button id="pensarBtn" class="action-btn ai-btn" title="Reflexión IA (donalex:1717)">🧠 Pensar</button>
         <button id="investigarBtn" class="action-btn ai-btn" title="Investigar tema con Scrapling">🔍 Investigar</button>
+        <button id="format-btn" class="action-btn" title="Formato Unicode">𝔄</button>
         <button id="emojiBtn" class="action-btn" title="Insertar Emoji">😊</button>
         <button id="limpiarGatosBtn" class="action-btn" title="Quitar solo los #">Limpiar #</button>
         <button id="borrarComentariosBtn" class="action-btn" title="Borrar líneas #">Borrar Comentarios</button>
@@ -151,39 +152,55 @@
 
   <!-- Modal de Investigación -->
   <div class="modal fade" id="researchModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
       <div class="modal-content bg-dark text-white border-secondary shadow-lg">
         <div class="modal-header border-secondary">
-          <h5 class="modal-title">🔍 Refinar Investigación</h5>
+          <h5 class="modal-title">🔍 Investigación</h5>
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          <p class="small text-secondary mb-2">Términos de búsqueda:</p>
-          <textarea id="searchQueryInput" class="form-control bg-black text-white border-secondary mb-3" rows="2" style="font-family: monospace;"></textarea>
-          
-          <p class="small text-secondary mb-2">Enfoque / Tendencias (ej: Neurociencia, Psicología, Economía):</p>
-          <input type="text" id="trendsInput" class="form-control bg-black text-white border-secondary mb-3" placeholder="Sugeridas por IA...">
-          
-          <p class="small text-secondary mb-1">Profundidad:</p>
-          <div class="d-flex gap-3 mb-3">
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="researchDepth" id="depthSencilla" value="sencilla" checked>
-              <label class="form-check-label small text-white" for="depthSencilla">Sencilla</label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="researchDepth" id="depthProfunda" value="profunda">
-              <label class="form-check-label small text-white" for="depthProfunda">Profunda (Fuentes.md)</label>
+          <!-- Configuración -->
+          <div id="researchConfig">
+            <p class="small text-secondary mb-2">Términos de búsqueda:</p>
+            <textarea id="searchQueryInput" class="form-control bg-black text-white border-secondary mb-3" rows="2" style="font-family: monospace;"></textarea>
+            
+            <p class="small text-secondary mb-2">Enfoque / Tendencias (ej: Neurociencia, Psicología, Economía):</p>
+            <input type="text" id="trendsInput" class="form-control bg-black text-white border-secondary mb-3" placeholder="Sugeridas por IA...">
+            
+            <p class="small text-secondary mb-1">Profundidad:</p>
+            <div class="d-flex gap-3 mb-3">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="researchDepth" id="depthSencilla" value="sencilla" checked>
+                <label class="form-check-label small text-white" for="depthSencilla">Sencilla</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="researchDepth" id="depthProfunda" value="profunda">
+                <label class="form-check-label small text-white" for="depthProfunda">Profunda (Fuentes.md)</label>
+              </div>
             </div>
           </div>
 
+          <!-- Status -->
           <div id="researchStatus" class="small text-info d-none">
             <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-            Investigando con Scrapling... por favor espera.
+            <span id="researchStatusText">Investigando con Scrapling... por favor espera.</span>
+          </div>
+
+          <!-- Resultados de la síntesis -->
+          <div id="researchResults" class="d-none">
+            <p class="small fw-bold text-secondary mb-2">📄 Síntesis generada por IA:</p>
+            <div id="researchSynthesis" class="bg-black border-secondary rounded p-3 text-white" style="white-space: pre-wrap; max-height: 500px; overflow-y: auto; font-size: 0.9rem;"></div>
           </div>
         </div>
-        <div class="modal-footer border-secondary">
+        <div class="modal-footer border-secondary" id="researchConfigFooter">
           <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
           <button type="button" id="startResearchBtn" class="btn btn-sm btn-primary ai-btn">Lanzar Investigación 🚀</button>
+        </div>
+        <div class="modal-footer border-secondary d-none" id="researchResultsFooter">
+          <button type="button" id="researchCloseBtn" class="btn btn-sm btn-secondary">Cerrar</button>
+          <button type="button" id="researchDiscardBtn" class="btn btn-sm btn-outline-danger">Desechar</button>
+          <button type="button" id="researchCopyBtn" class="btn btn-sm btn-success">📋 Copiar</button>
+          <button type="button" id="researchInjectBtn" class="btn btn-sm btn-primary ai-btn">📥 Inyectar en Editor</button>
         </div>
       </div>
     </div>
@@ -200,6 +217,8 @@
     <button class="menu-btn" data-style="squared" title="En Cuadros">🄰</button>
     <button class="menu-btn" data-style="fullwidth" title="Ancho Completo">Ｗ</button>
   </div>
+
+  <emoji-picker style="display: none; position: absolute; z-index: 10000;"></emoji-picker>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>

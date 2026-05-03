@@ -36,14 +36,32 @@ Al realizar investigaciones con mucha información (ej: 12KB+), la IA tardaba m�
 3.  **Resiliencia:**
     *   Se añadió manejo de errores específico para el caso de "AbortError" (Timeout).
 
-## [2026-04-27] Seguridad: Migración a Variables de Entorno (.env)
+## [2026-05-01] Reparación Definitiva y Estabilización (Sesión Intensiva)
 **Agente:** Gemini CLI
 
+### Problema Identificado:
+Sesión de depuración extendida (>2 horas) debido a fallos intermitentes en la inyección de contenido IA, errores de autorización y bloqueos de la interfaz (`TypeError`). La causa raíz fue una combinación de eventos de modal inoportunos y pérdida de dependencias funcionales en el frontend.
+
 ### Acciones Realizadas:
-1.  **Desacoplamiento de Credenciales:**
-    *   Se eliminó la API Key de DeepInfra hardcodeada en `server.js`.
-    *   Se creó un archivo `.env` (ignorado por Git) para almacenar `DEEPINFRA_API_KEY`.
-2.  **Gestión de Dependencias:**
-    *   Se instaló `dotenv` (`npm install dotenv`) para gestionar las variables de entorno.
-3.  **Protección de Repositorio:**
-    *   Se creó un archivo `.gitignore` robusto para evitar subir credenciales, entornos virtuales o carpetas de dependencias al repositorio.
+1.  **Cambio de Paradigma en Inyección:**
+    *   Se abandonó el uso de eventos `hidden.bs.modal` para lógica de edición.
+    *   Se migró a la API directa de CodeMirror (`cm.getDoc().setValue()`) invocada desde el `onclick` del botón, garantizando que la inyección ocurra mientras el editor está activo.
+    *   Se añadieron comandos de sincronización forzada: `cm.refresh()`, `cm.focus()` y scroll automático al final.
+2.  **Saneamiento de API e Infraestructura:**
+    *   Se migró el modelo IA a `nvidia/Llama-3.1-Nemotron-70B-Instruct` por su superior relación costo-beneficio.
+    *   Se implementó saneamiento de API Key (`.trim()`) para evitar errores de autorización por caracteres invisibles.
+    *   Se optimizó `iniciar.sh` con `fuser -k` para asegurar reinicios limpios del servidor.
+3.  **Restauración de Integridad Frontend:**
+    *   Se re-implementaron funciones críticas de utilidad Unicode que se habían perdido.
+    *   Se corrigió la falta de la etiqueta `<emoji-picker>` en el HTML y se robusteció su carga en JS.
+4.  **Confirmación de Fuentes:**
+    *   Se verificó la inclusión de `archive.org` en el catálogo de fuentes fiables.
+
+5.  **Migración a Servicio de Sistema:**
+    *   Se configuró `simply-apps.service` como un servicio de usuario en Systemd.
+    *   Esto permite que la aplicación esté siempre disponible sin necesidad de ejecutar scripts manualmente.
+
+### Resultado:
+Sistema 100% operativo y persistente. Inyección instantánea, previsualización Unicode activa y gestión mediante comandos de sistema (`systemctl`).
+
+

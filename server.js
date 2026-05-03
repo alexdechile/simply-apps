@@ -17,12 +17,18 @@ app.use(express.static(__dirname));
 const { exec } = require('child_process');
 
 // Configuración de IA (DeepInfra) desde variable de entorno
-const DEEPINFRA_API_KEY = process.env.DEEPINFRA_API_KEY;
+const DEEPINFRA_API_KEY = (process.env.DEEPINFRA_API_KEY || '').trim();
+const logMsg = `[Config] API Key: ${DEEPINFRA_API_KEY ? 'Cargada (L:' + DEEPINFRA_API_KEY.length + ', ' + DEEPINFRA_API_KEY.substring(0,3) + '...' + DEEPINFRA_API_KEY.slice(-3) + ')' : 'NO CARGADA'}\n`;
+fs.appendFileSync(path.join(__dirname, 'simply.log'), logMsg);
+console.log(logMsg.trim());
 
 app.post('/save-to-vault', (req, res) => {
     const { content, filename } = req.body;
+    console.log(`[Vault] Solicitud recibida - filename: ${filename}, content length: ${content ? content.length : 0}`);
+    
     if (!content) {
-        return res.status(400).send('No content provided');
+        console.log('[Vault] Error: No content provided');
+        return res.status(400).json({ error: 'No content provided' });
     }
 
     const vaultPath = '/home/alexdechile/vault';
@@ -30,9 +36,12 @@ app.post('/save-to-vault', (req, res) => {
     const date = new Date().toISOString().split('T')[0];
     const name = filename || `post_${date}.md`;
     
+    console.log(`[Vault] Guardando como: ${name} en ${postsPath}`);
+    
     // Asegurar que la carpeta 'posts' existe
     if (!fs.existsSync(postsPath)) {
         fs.mkdirSync(postsPath, { recursive: true });
+        console.log(`[Vault] Creada carpeta posts`);
     }
 
     const fullPath = path.join(postsPath, name);
@@ -40,27 +49,29 @@ app.post('/save-to-vault', (req, res) => {
 
     fs.writeFile(fullPath, content, (err) => {
         if (err) {
-            console.error('Error saving to vault:', err);
-            return res.status(500).send('Error saving to vault');
+            console.error('[Vault] Error saving to vault:', err);
+            return res.status(500).json({ error: 'Error saving to vault', details: err.message });
         }
         
-        console.log(`Saved ${name} to vault/posts`);
+        console.log(`[Vault] Success: Saved ${name} to vault/posts`);
 
         // Actualizar _sidebar.md automáticamente
         try {
-            let sidebarContent = fs.readFileSync(sidebarPath, 'utf8');
-            const linkText = `* [${name.replace('.md', '')}](/posts/${name})`;
-            
-            if (!sidebarContent.includes(linkText)) {
-                // Si no existe la sección Simply Posts, crearla
-                if (!sidebarContent.includes('**Simply Posts**')) {
-                    sidebarContent += '\n\n* ✍️ **Simply Posts**';
-                }
+            if (fs.existsSync(sidebarPath)) {
+                let sidebarContent = fs.readFileSync(sidebarPath, 'utf8');
+                const linkText = `* [${name.replace('.md', '')}](/posts/${name})`;
                 
-                // Añadir el link bajo la sección (o al final si es más simple)
-                sidebarContent += `\n  ${linkText}`;
-                fs.writeFileSync(sidebarPath, sidebarContent);
-                console.log(`Updated _sidebar.md with ${name}`);
+                if (!sidebarContent.includes(linkText)) {
+                    // Si no existe la sección Simply Posts, crearla
+                    if (!sidebarContent.includes('**Simply Posts**')) {
+                        sidebarContent += '\n\n* ✍️ **Simply Posts**';
+                    }
+                    
+                    // Añadir el link bajo la sección (o al final si es más simple)
+                    sidebarContent += `\n  ${linkText}`;
+                    fs.writeFileSync(sidebarPath, sidebarContent);
+                    console.log(`Updated _sidebar.md with ${name}`);
+                }
             }
         } catch (sidebarErr) {
             console.error('Error updating sidebar:', sidebarErr);
@@ -81,7 +92,6 @@ app.post('/research', (req, res) => {
     console.log(`Researching topic: ${topic} (Depth: ${depth || 'sencilla'})`);
     
     const command = `${pythonBin} "${scriptPath}" "${topic.replace(/"/g, '\\"')}" "${depth || 'sencilla'}"`;
-    console.log(`Executing: ${command}`);
     
     exec(command, (error, stdout, stderr) => {
         if (error) {
@@ -125,8 +135,10 @@ app.post('/export', (req, res) => {
 
 app.post('/ask-ai', async (req, res) => {
     const { systemPrompt, userContent, model } = req.body;
+    const selectedModel = model || "nvidia/Llama-3.1-Nemotron-70B-Instruct";
     
     try {
+        console.log(`[AI Request] Model: ${selectedModel}`);
         const response = await fetch('https://api.deepinfra.com/v1/openai/chat/completions', {
             method: 'POST',
             headers: { 
@@ -134,7 +146,7 @@ app.post('/ask-ai', async (req, res) => {
                 'Authorization': `Bearer ${DEEPINFRA_API_KEY}` 
             },
             body: JSON.stringify({
-                model: model || "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B",
+                model: selectedModel,
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userContent }
@@ -145,8 +157,11 @@ app.post('/ask-ai', async (req, res) => {
         });
 
         const data = await response.json();
-        if (data.error) {
-            return res.status(500).send(data.error.message || 'Error from DeepInfra');
+        if (!response.ok) {
+            const errorLog = `[AI Error] Status: ${response.status}, Data: ${JSON.stringify(data)}\n`;
+            fs.appendFileSync(path.join(__dirname, 'simply.log'), errorLog);
+            console.error(errorLog.trim());
+            return res.status(response.status).send(data.error ? data.error.message : 'Error from IA');
         }
         res.send(data);
     } catch (error) {

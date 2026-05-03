@@ -8,9 +8,11 @@ PORT=1717
 # Cambiar al directorio donde está el script
 cd "$(dirname "$0")"
 
-# Matar cualquier servidor anterior en el mismo puerto
-pkill -f "node server.js" 2>/dev/null
-sleep 1
+# Matar cualquier servidor anterior en el mismo puerto (forma agresiva para asegurar actualización)
+echo "Limpiando procesos anteriores..."
+fuser -k $PORT/tcp 2>/dev/null
+pkill -9 -f "node server.js" 2>/dev/null
+sleep 2
 
 echo "Iniciando servidor Express en puerto $PORT..."
 node server.js &

@@ -17,6 +17,7 @@
     cargarArchivoBtn: document.getElementById('cargarArchivoBtn'),
     guardarArchivoBtn: document.getElementById('guardarArchivoBtn'),
     archivoInput: document.getElementById('archivoInput'),
+    limpiarBtn: document.getElementById('limpiarBtn'),
     limpiarGatosBtn: document.getElementById('limpiarGatosBtn'),
     borrarComentariosBtn: document.getElementById('borrarComentariosBtn'),
     emojiBtn: document.getElementById('emojiBtn'),
@@ -103,8 +104,6 @@ Regla de Estructura:
     const oldFB = localStorage.getItem('p_fb');
     if (oldFB && !localStorage.getItem('p_fb_col')) {
       localStorage.setItem('p_fb_col', oldFB);
-      // Opcional: limpiar el antiguo para no repetir migración
-      // localStorage.removeItem('p_fb'); 
     }
 
     if (el.prompts.fb_col) el.prompts.fb_col.value = localStorage.getItem('p_fb_col') || defaultPrompts.fb_col;
@@ -125,15 +124,22 @@ Regla de Estructura:
     el.currentToneLabel.textContent = map[val] || 'Coloquial';
   }
 
-  el.toneOptions.forEach(opt => {
-    opt.onclick = (e) => {
-      e.preventDefault();
-      const val = opt.getAttribute('data-value');
-      state.currentTone = val;
-      localStorage.setItem('simply-tone', val);
-      actualizarLabelTono(val);
-    };
-  });
+  // Corrección: Event delegation para tonos (evita interferencia con Bootstrap)
+  const toneDropdown = document.getElementById('toneDropdown');
+  if (toneDropdown) {
+    const toneMenu = toneDropdown.nextElementSibling;
+    if (toneMenu) {
+      toneMenu.addEventListener('click', (e) => {
+        const opt = e.target.closest('.tone-option');
+        if (!opt) return;
+        e.preventDefault();
+        const val = opt.dataset.value;
+        state.currentTone = val;
+        localStorage.setItem('simply-tone', val);
+        actualizarLabelTono(val);
+      });
+    }
+  }
 
   el.prompts.save.onclick = () => {
     if (el.prompts.fb_col) localStorage.setItem('p_fb_col', el.prompts.fb_col.value);
@@ -195,7 +201,7 @@ Regla de Estructura:
   function actualizarVistas() {
     try {
       const md = easyMDE.value();
-      
+
       // Si no es un resultado de IA, actualizamos en vivo el espejo
       if (!state.isThinking && el.outFB) {
         el.outFB.textContent = markdownToFacebookUnicode(md);
@@ -207,7 +213,7 @@ Regla de Estructura:
         const words = md.trim() ? md.trim().split(/\s+/).length : 0;
         wordCountEl.textContent = words;
       }
-      
+
       localStorage.setItem('simply-editor-content', md);
     } catch (err) {
       console.error("Error en actualizarVistas:", err);
@@ -215,6 +221,35 @@ Regla de Estructura:
   }
 
   easyMDE.codemirror.on('change', actualizarVistas);
+
+  // --- LÓGICA DE BARRA FLOTANTE ---
+  easyMDE.codemirror.on('cursorActivity', () => {
+    const cm = easyMDE.codemirror;
+    const menu = el.formatMenu;
+    if (!menu) return;
+
+    if (cm.somethingSelected()) {
+      const cursor = cm.cursorCoords(false, 'window');
+      menu.classList.add('visible');
+      
+      // Posicionamiento dinámico
+      const menuWidth = menu.offsetWidth || 340;
+      const menuHeight = menu.offsetHeight || 45;
+      
+      let left = cursor.left + (cursor.right - cursor.left) / 2 - menuWidth / 2;
+      let top = cursor.top - menuHeight - 15;
+      
+      // Evitar desbordamiento
+      if (left < 10) left = 10;
+      if (left + menuWidth > window.innerWidth - 10) left = window.innerWidth - menuWidth - 10;
+      if (top < 10) top = cursor.bottom + 15;
+      
+      menu.style.left = left + 'px';
+      menu.style.top = top + 'px';
+    } else {
+      menu.classList.remove('visible');
+    }
+  });
 
   // --- SCROLL SINCRONIZADO ---
   easyMDE.codemirror.on('scroll', (cm) => {
@@ -224,7 +259,7 @@ Regla de Estructura:
       if (denominator <= 0) return;
 
       const scrollPercent = scrollInfo.top / denominator;
-      
+
       let activeOutput;
       if (state.activeChannel === 'fb') activeOutput = el.outFB;
       else if (state.activeChannel === 'x') activeOutput = el.outX;
@@ -244,7 +279,7 @@ Regla de Estructura:
   // --- IA donalex:1717 ---
   async function callAI(systemPrompt, userContent) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 segundos de gracia
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
 
     try {
       const response = await fetch('ask-ai', {
@@ -252,8 +287,7 @@ Regla de Estructura:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           systemPrompt,
-          userContent,
-          model: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B"
+          userContent
         }),
         signal: controller.signal
       });
@@ -295,7 +329,6 @@ Regla de Estructura:
       const tonePromptEl = el.prompts[state.currentTone];
       const systemPrompt = tonePromptEl ? tonePromptEl.value : defaultPrompts[state.currentTone];
       
-      // Instrucción de usuario para edición y corrección de estilo
       const userInstruction = `Analiza el siguiente texto y asegúrate de que cumpla estrictamente con tu personalidad y reglas de estilo definidas. 
 Corrige la ortografía y gramática, y adapta el tono según sea necesario para que suene natural y profesional dentro de tu rol.
 
@@ -304,33 +337,16 @@ Entrega solo el resultado final, sin introducciones ni comentarios adicionales.
 TEXTO A PROCESAR:
 ${text}`;
 
-      // Generar Facebook Post
       let fbPost = await callAI(systemPrompt, userInstruction);
-      
-      // Limpiar posibles bloques de código markdown que la IA a veces añade
       fbPost = fbPost.replace(/^```markdown\n?/g, '').replace(/```$/g, '').trim();
       
-      console.log("Respuesta procesada de la IA lista para inyectar:", fbPost);
-
       if (confirm(`🧠 La IA ha procesado el texto con éxito.\n\n¿Quieres inyectar el resultado en el editor?`)) {
         const cm = easyMDE.codemirror;
-        
-        // Guardar posición de scroll actual
         const scrollInfo = cm.getScrollInfo();
-        
-        // Inyectar directamente usando la API de CodeMirror para mayor robustez
         cm.getDoc().setValue(fbPost);
-        
-        // Forzar repintado visual y actualización de alturas
         cm.refresh();
-        
-        // Restaurar scroll al inicio para el nuevo contenido
         cm.scrollTo(scrollInfo.left, 0);
-
-        // Actualizar manualmente la vista de previsualización
         el.outFB.textContent = markdownToFacebookUnicode(fbPost);
-        
-        // Asegurar que el contador de caracteres se actualice
         if (el.charCount) el.charCount.textContent = fbPost.length;
       }
     } catch (e) { 
@@ -345,11 +361,98 @@ ${text}`;
   el.pensar.onclick = consultarIA;
 
   // Elementos del Modal
-  const researchModal = new bootstrap.Modal(document.getElementById('researchModal'));
+  const researchModalEl = document.getElementById('researchModal');
+  const researchModal = new bootstrap.Modal(researchModalEl);
+  const researchConfig = document.getElementById('researchConfig');
+  const researchConfigFooter = document.getElementById('researchConfigFooter');
+  const researchResults = document.getElementById('researchResults');
+  const researchResultsFooter = document.getElementById('researchResultsFooter');
+  const researchSynthesis = document.getElementById('researchSynthesis');
+  const researchStatus = document.getElementById('researchStatus');
+  const researchStatusText = document.getElementById('researchStatusText');
   const searchQueryInput = document.getElementById('searchQueryInput');
   const trendsInput = document.getElementById('trendsInput');
   const startResearchBtn = document.getElementById('startResearchBtn');
-  const researchStatus = document.getElementById('researchStatus');
+  const researchInjectBtn = document.getElementById('researchInjectBtn');
+  const researchCopyBtn = document.getElementById('researchCopyBtn');
+  const researchDiscardBtn = document.getElementById('researchDiscardBtn');
+  const researchCloseBtn = document.getElementById('researchCloseBtn');
+  let pendingSynthesis = localStorage.getItem('simply-pending-research') || '';
+  let slideTimeout = null;
+
+  function showModalSlide() {
+    clearTimeout(slideTimeout);
+    researchModalEl.classList.remove('closing');
+    researchModal.show();
+  }
+
+  function hideModalSlide() {
+    researchModalEl.classList.add('closing');
+    clearTimeout(slideTimeout);
+    slideTimeout = setTimeout(() => {
+      researchModalEl.classList.remove('closing');
+      researchModal.hide();
+    }, 300);
+  }
+
+  function showResearchConfig() {
+    researchConfig.classList.remove('d-none');
+    researchConfigFooter.classList.remove('d-none');
+    researchResults.classList.add('d-none');
+    researchResultsFooter.classList.add('d-none');
+    researchStatus.classList.add('d-none');
+  }
+
+  function showResearchResults() {
+    researchConfig.classList.add('d-none');
+    researchConfigFooter.classList.add('d-none');
+    researchResults.classList.remove('d-none');
+    researchResultsFooter.classList.remove('d-none');
+    researchStatus.classList.add('d-none');
+  }
+
+  function showResearchLoading(text) {
+    researchStatusText.textContent = text;
+    researchStatus.classList.remove('d-none');
+  }
+
+  function resetResearchModal() {
+    pendingSynthesis = '';
+    researchSynthesis.textContent = '';
+    localStorage.removeItem('simply-pending-research');
+    showResearchConfig();
+  }
+
+  researchModalEl.addEventListener('hidden.bs.modal', () => {
+    localStorage.removeItem('simply-pending-research');
+    resetResearchModal();
+  });
+
+  researchDiscardBtn.onclick = () => {
+    hideModalSlide();
+  };
+
+  researchCloseBtn.onclick = () => {
+    hideModalSlide();
+  };
+
+  researchInjectBtn.onclick = () => {
+    if (!pendingSynthesis) return;
+
+    const cm = easyMDE.codemirror;
+    cm.getDoc().setValue(pendingSynthesis);
+    cm.refresh();
+    cm.scrollTo(0, 0);
+    actualizarVistas();
+    hideModalSlide();
+
+    setTimeout(() => {
+      cm.focus();
+      alert('¡Investigación inyectada (contenido anterior reemplazado)!');
+    }, 500);
+  };
+
+  researchCopyBtn.onclick = () => copyToClipboard(pendingSynthesis, researchCopyBtn);
 
   el.investigar.onclick = async () => {
     const rawTopic = prompt('¿Qué tema quieres investigar con Scrapling?');
@@ -365,6 +468,7 @@ ${text}`;
     const originalText = el.investigar.textContent;
     el.investigar.textContent = '🧠 Planificando...';
     el.investigar.disabled = true;
+    showResearchConfig();
 
     try {
       // PASO 1: Planificación (Pedimos Query + Dominios)
@@ -375,7 +479,7 @@ Responde con un objeto JSON (solo el JSON) con este formato:
   "tendencias": "3 dominios relevantes separados por comas (ej: Neurociencia, Nutrición, Psicología)"
 }`;
       
-      const planRaw = await callAI("Estratega de Investigación", planPrompt, apiKey);
+      const planRaw = await callAI("Estratega de Investigación", planPrompt);
       let plan;
       try {
         plan = JSON.parse(planRaw.replace(/```json|```/g, ''));
@@ -383,12 +487,10 @@ Responde con un objeto JSON (solo el JSON) con este formato:
         plan = { query: rawTopic, tendencias: "General, Ciencia, Tendencias" };
       }
 
-      // PASO 2: Mostrar Modal
+      // PASO 2: Mostrar Modal con configuración
       searchQueryInput.value = plan.query;
       trendsInput.value = plan.tendencias;
-      researchStatus.classList.add('d-none');
-      startResearchBtn.disabled = false;
-      researchModal.show();
+      showModalSlide();
 
       // Manejador del botón del modal
       startResearchBtn.onclick = async () => {
@@ -398,7 +500,7 @@ Responde con un objeto JSON (solo el JSON) con este formato:
         if (!finalQuery) return;
 
         startResearchBtn.disabled = true;
-        researchStatus.classList.remove('d-none');
+        showResearchLoading('Investigando con Scrapling... por favor espera.');
 
         try {
           // PASO 3: Investigación técnica
@@ -416,10 +518,9 @@ Responde con un objeto JSON (solo el JSON) con este formato:
           if (!response.ok) throw new Error('La investigación técnica falló.');
 
           const data = await response.json();
-          console.log("Datos recibidos para síntesis. Tamaño:", data.content ? data.content.length : 0);
 
           // PASO 4: Síntesis adaptativa
-          researchStatus.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Sintetizando reporte final...';
+          showResearchLoading('Sintetizando reporte final con IA...');
           
           const synthesizePrompt = `Eres donalex:1717, un adulto con visión crítica, buen lector, políglota y estudioso constante de la realidad. Escribes con una voz humana, informada y consciente del mundo.
 Investigación: "${rawTopic}". 
@@ -438,42 +539,25 @@ Genera un reporte "Simply Style" con esta estructura:
    - No menciones que eres una IA.
 4. NARRATIVA DE FUENTES: Al final, redacta un pequeño párrafo narrativo (estilo bibliográfico) mencionando las fuentes y sitios web consultados basándote en los DATOS proporcionados. Sin enlaces crudos.`;
 
-          console.log("Llamando a IA para síntesis...");
-          researchStatus.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Sintetizando con IA...';
-          
           const finalReport = await callAI("Analista Estratégico", synthesizePrompt);
-          console.log("Respuesta de IA recibida. Longitud:", finalReport ? finalReport.length : 0);
 
           if (!finalReport || finalReport.length < 10) {
             throw new Error('La IA devolvió un reporte demasiado corto o vacío.');
           }
 
-          console.log("Inyectando contenido en el editor...");
-          const cm = easyMDE.codemirror;
-          const currentContent = easyMDE.value();
-          const separator = currentContent ? '\n\n---\n\n' : '';
-          
-          // Limpiar bloques de código markdown si la IA los incluyó por error
-          const cleanReport = finalReport.replace(/^```markdown\n?/g, '').replace(/```$/g, '').trim();
-          
-          // Inyectar usando la API directa para asegurar el renderizado
-          cm.getDoc().setValue(currentContent + separator + cleanReport);
-          
-          // Refrescar y actualizar vistas
-          cm.refresh();
-          actualizarVistas();
-          
-          researchModal.hide();
-          console.log("Inyección completada con éxito.");
-          
-          setTimeout(() => {
-            alert('¡Investigación completada!');
-          }, 500);
+          // Limpiar bloques de código markdown
+          pendingSynthesis = finalReport.replace(/^```markdown\n?/g, '').replace(/```$/g, '').trim();
+          localStorage.setItem('simply-pending-research', pendingSynthesis);
+
+          // Mostrar resultados en el modal
+          researchSynthesis.textContent = pendingSynthesis;
+          showResearchResults();
+
         } catch (e) {
           alert('Error: ' + e.message);
+          showResearchConfig();
         } finally {
           startResearchBtn.disabled = false;
-          researchStatus.classList.add('d-none');
         }
       };
 
@@ -485,22 +569,7 @@ Genera un reporte "Simply Style" con esta estructura:
     }
   };
 
-  function planTopicTemplate(topic) {
-    return `Crea una búsqueda de Google/DuckDuckGo simple y directa para investigar tendencias actuales sobre: "${topic}". 
-Enfócate en encontrar datos sobre neurociencia, economía o filosofía relacionados.
-Responde SOLO con el texto de la búsqueda, sin comillas ni operadores complejos como (+, OR, paréntesis). 
-Ejemplo: Tendencias en neurociencia y salud cerebral 2024`;
-  }
-
   async function generarDerivado(tipo) {
-    let apiKey = localStorage.getItem('deepinfra-api-key');
-    if (!apiKey) {
-      apiKey = prompt('API Key de DeepInfra:');
-      if (apiKey) localStorage.setItem('deepinfra-api-key', apiKey);
-      else return;
-    }
-
-    // Usamos el contenido actual de Facebook como base
     const fbContent = el.outFB.textContent;
     if (!fbContent.trim()) {
       alert('Primero debes tener contenido en Facebook para derivar.');
@@ -514,8 +583,8 @@ Ejemplo: Tendencias en neurociencia y salud cerebral 2024`;
 
     try {
       const prompt = tipo === 'x' ? el.prompts.x.value : el.prompts.li.value;
-      const derivado = await callAI(prompt, fbContent, apiKey);
-      
+      const derivado = await callAI(prompt, fbContent);
+
       if (tipo === 'x') {
         el.outX.textContent = derivado;
         if (el.xCounter) el.xCounter.textContent = 280 - derivado.length;
@@ -536,278 +605,220 @@ Ejemplo: Tendencias en neurociencia y salud cerebral 2024`;
   el.genX.onclick = () => generarDerivado('x');
   el.genLI.onclick = () => generarDerivado('li');
 
-  // --- MENÚ DE FORMATO ---
-  easyMDE.codemirror.on('cursorActivity', () => {
-    if (easyMDE.codemirror.somethingSelected()) {
-      const coords = easyMDE.codemirror.charCoords(easyMDE.codemirror.getCursor('start'), 'page');
-      el.formatMenu.classList.add('visible');
-      let left = coords.left - (el.formatMenu.offsetWidth / 2);
-      if (left < 10) left = 10;
-      if (left + el.formatMenu.offsetWidth > window.innerWidth - 10) left = window.innerWidth - el.formatMenu.offsetWidth - 10;
-      el.formatMenu.style.left = left + 'px';
-      el.formatMenu.style.top = (coords.top - el.formatMenu.offsetHeight - 15) + 'px';
-    } else {
-      el.formatMenu.classList.remove('visible');
-    }
-  });
+  // --- HERRAMIENTAS DE TEXTO ---
+  if (el.limpiarBtn) {
+    el.limpiarBtn.onclick = () => {
+      if (confirm('¿Quieres limpiar todo el editor?')) {
+        easyMDE.value('');
+        actualizarVistas();
+      }
+    };
+  }
 
-  el.formatMenu.querySelectorAll('.menu-btn').forEach(btn => {
-    btn.onmousedown = (e) => {
-      e.preventDefault();
+  const formatBtn = document.getElementById('format-btn');
+  if (formatBtn && el.formatMenu) {
+    formatBtn.onclick = () => el.formatMenu.classList.toggle('visible');
+  }
+
+  document.querySelectorAll('.menu-btn').forEach(btn => {
+    btn.onclick = () => {
       const style = btn.getAttribute('data-style');
-      const selection = easyMDE.codemirror.getSelection();
-      let wrapped;
-      switch(style) {
-        case 'bold': wrapped = `**${selection}**`; break;
-        case 'italic': wrapped = `*${selection}*`; break;
-        case 'script': wrapped = `{s}${selection}{/s}`; break;
-        case 'fraktur': wrapped = `{f}${selection}{/f}`; break;
-        case 'double': wrapped = `{d}${selection}{/d}`; break;
-        case 'sansbold': wrapped = `{sb}${selection}{/sb}`; break;
-        case 'circled': wrapped = `{c}${selection}{/c}`; break;
-        case 'squared': wrapped = `{sq}${selection}{/sq}`; break;
-        case 'fullwidth': wrapped = `{fw}${selection}{/fw}`; break;
-      }
-      easyMDE.codemirror.replaceSelection(wrapped);
+      const cm = easyMDE.codemirror;
+      const selection = cm.getSelection();
+      if (!selection) return;
+      const transformed = applyTextStyle(selection, style);
+      cm.replaceSelection(transformed);
+      el.formatMenu.classList.remove('visible');
     };
   });
 
-  // --- UNICODE ---
-  function markdownToFacebookUnicode(md) {
-    md = md.replace(/(\*\*\*|___)(.*?)\1/g, (_, __, t) => toBoldItalic(t));
-    md = md.replace(/(\*\*|__)(.*?)\1/g, (_, __, t) => toBold(t));
-    md = md.replace(/(\*|_)(.*?)\1/g, (_, __, t) => toItalic(t));
-    md = md.replace(/\{s\}(.*?)\{\/s\}/g, (_, t) => toScript(t));
-    md = md.replace(/\{f\}(.*?)\{\/f\}/g, (_, t) => toFraktur(t));
-    md = md.replace(/\{d\}(.*?)\{\/d\}/g, (_, t) => toDoubleStruck(t));
-    md = md.replace(/\{sb\}(.*?)\{\/sb\}/g, (_, t) => toSansBold(t));
-    md = md.replace(/\{c\}(.*?)\{\/c\}/g, (_, t) => toCircled(t));
-    md = md.replace(/\{sq\}(.*?)\{\/sq\}/g, (_, t) => toSquared(t));
-    md = md.replace(/\{fw\}(.*?)\{\/fw\}/g, (_, t) => toFullwidth(t));
-    md = md.replace(/`([^`]+)`/g, (_, t) => toMonospace(t));
-    return md.replace(/\r\n|\r|\n/g, '\n');
-  }
+  document.getElementById('limpiarGatosBtn').onclick = () => {
+    const cm = easyMDE.codemirror;
+    const text = cm.getValue();
+    const cleaned = text.replace(/#/g, '').trim();
+    cm.getDoc().setValue(cleaned);
+    cm.refresh();
+    actualizarVistas();
+  };
 
-  // Funciones de mapeo matemático corregidas
-  function toBold(s) { return s.replace(/[A-Za-z0-9]/g, c => { let code = c.charCodeAt(0); if (code>=65 && code<=90) return String.fromCodePoint(code+119743); if (code>=97 && code<=122) return String.fromCodePoint(code+119737); if (code>=48 && code<=57) return String.fromCodePoint(code+120734); return c; }); }
-  function toItalic(s) { return s.replace(/[A-Za-z]/g, c => { if (c==='h') return 'ℎ'; let code = c.charCodeAt(0); if (code>=65 && code<=90) return String.fromCodePoint(code+119795); if (code>=97 && code<=122) return String.fromCodePoint(code+119789); return c; }); }
-  function toBoldItalic(s) { return s.replace(/[A-Za-z]/g, c => { let code = c.charCodeAt(0); if (code>=65 && code<=90) return String.fromCodePoint(code+119847); if (code>=97 && code<=122) return String.fromCodePoint(code+119841); return c; }); }
-  function toMonospace(s) { return s.replace(/[A-Za-z0-9]/g, c => { let code = c.charCodeAt(0); if (code>=65 && code<=90) return String.fromCodePoint(code+120367); if (code>=97 && code<=122) return String.fromCodePoint(code+120361); if (code>=48 && code<=57) return String.fromCodePoint(code+120734); return c; }); }
-  function toScript(s) { const map = {'B':'ℬ','E':'ℰ','F':'ℱ','H':'ℋ','I':'ℐ','L':'ℒ','M':'ℳ','R':'ℛ','e':'ℯ','g':'ℊ','o':'ℴ'}; return s.replace(/[A-Za-z]/g, c => map[c] || (c.charCodeAt(0)>=65 && c.charCodeAt(0)<=90 ? String.fromCodePoint(c.charCodeAt(0)+119899) : String.fromCodePoint(c.charCodeAt(0)+119893))); }
-  function toFraktur(s) { const map = {'C':'ℭ','H':'ℌ','I':'ℑ','R':'ℜ','Z':'ℨ'}; return s.replace(/[A-Za-z]/g, c => map[c] || (c.charCodeAt(0)>=65 && c.charCodeAt(0)<=90 ? String.fromCodePoint(c.charCodeAt(0)+120003) : String.fromCodePoint(c.charCodeAt(0)+119997))); }
-  function toDoubleStruck(s) { const map = {'C':'ℂ','H':'ℍ','N':'ℕ','P':'ℙ','Q':'ℚ','R':'ℝ','Z':'ℤ'}; return s.replace(/[A-Za-z0-9]/g, c => map[c] || (c.charCodeAt(0)>=65 && c.charCodeAt(0)<=90 ? String.fromCodePoint(c.charCodeAt(0)+120055) : (c.charCodeAt(0)>=48 && c.charCodeAt(0)<=57 ? String.fromCodePoint(c.charCodeAt(0)+120744) : String.fromCodePoint(c.charCodeAt(0)+120049)))); }
-  function toSansBold(s) { return s.replace(/[A-Za-z0-9]/g, c => { let code = c.charCodeAt(0); if (code>=65 && code<=90) return String.fromCodePoint(code+120211); if (code>=97 && code<=122) return String.fromCodePoint(code+120205); if (code>=48 && code<=57) return String.fromCodePoint(code+120764); return c; }); }
-  function toCircled(s) { return s.replace(/[A-Za-z0-9]/g, c => { let code = c.charCodeAt(0); if (code>=65 && code<=90) return String.fromCodePoint(code+9333); if (code>=97 && code<=122) return String.fromCodePoint(code+9327); if (code>=49 && code<=57) return String.fromCodePoint(code+9263); if (c==='0') return '⓪'; return c; }); }
-  function toSquared(s) { return s.replace(/[A-Za-z]/g, c => { let code = c.charCodeAt(0); return String.fromCodePoint(code + (code>=65 && code<=90 ? 127215 : 127215)); }); }
-  function toFullwidth(s) { return s.replace(/[!-~]/g, c => String.fromCodePoint(c.charCodeAt(0)+65248)); }
+  document.getElementById('borrarComentariosBtn').onclick = () => {
+    const cm = easyMDE.codemirror;
+    const text = cm.getValue();
+    const filtered = text.split('\n').filter(line => !line.trim().startsWith('>')).join('\n').trim();
+    cm.getDoc().setValue(filtered);
+    cm.refresh();
+    actualizarVistas();
+  };
 
-  function copyToClipboard(text, btn) {
-    if (!text) return;
-    
-    const fallbackCopy = (t) => {
-      const textArea = document.createElement("textarea");
-      textArea.value = t;
-      // Asegurar que no sea visible pero esté en el DOM
-      textArea.style.position = "fixed";
-      textArea.style.left = "-999999px";
-      textArea.style.top = "-999999px";
-      document.body.appendChild(textArea);
-      textArea.focus();
-      textArea.select();
-      try {
-        document.execCommand('copy');
-        confirmCopy(btn);
-      } catch (err) {
-        console.error('Fallback copy failed', err);
+  // --- EMOJIS ---
+  const picker = document.querySelector('emoji-picker');
+  if (el.emojiBtn && picker) {
+    el.emojiBtn.onclick = () => {
+      const rect = el.emojiBtn.getBoundingClientRect();
+      const isVisible = picker.style.display === 'block';
+      picker.style.display = isVisible ? 'none' : 'block';
+      if (!isVisible) {
+        picker.style.top = (rect.bottom + 5) + 'px';
+        picker.style.left = (rect.left - 100) + 'px';
       }
-      document.body.removeChild(textArea);
     };
-
-    if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(text)
-        .then(() => confirmCopy(btn))
-        .catch(() => fallbackCopy(text));
-    } else {
-      fallbackCopy(text);
-    }
+    // Cerrar picker al hacer clic fuera
+    document.addEventListener('click', (e) => {
+      if (!picker.contains(e.target) && e.target !== el.emojiBtn) {
+        picker.style.display = 'none';
+      }
+    });
+    picker.addEventListener('emoji-click', (event) => {
+      const cm = easyMDE.codemirror;
+      cm.replaceSelection(event.detail.unicode);
+      picker.style.display = 'none';
+      cm.focus();
+    });
   }
 
-  function confirmCopy(btn) {
-    const originalText = btn.textContent;
-    btn.textContent = '✅';
-    setTimeout(() => btn.textContent = originalText, 1000);
+  // --- EXPORTACIÓN ---
+  async function exportContent(format) {
+    const content = easyMDE.value();
+    if (!content) return;
+    try {
+      const response = await fetch('/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, format })
+      });
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `simply_export.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+    } catch (e) { alert('Error al exportar'); }
   }
+  el.exportWord.onclick = () => exportContent('docx');
+  el.exportExcel.onclick = () => exportContent('xlsx');
+  el.exportHtml.onclick = () => exportContent('html');
 
-  // --- BOTONES EXTRAS ---
-  el.copyFB.onclick = () => copyToClipboard(el.outFB.textContent, el.copyFB);
-  el.copyX.onclick = () => copyToClipboard(el.outX.textContent, el.copyX);
-  el.copyLI.onclick = () => copyToClipboard(el.outLI.textContent, el.copyLI);
+  // --- VAULT ---
   el.vault.onclick = async () => {
-      const content = easyMDE.value();
-      const filename = `post_${new Date().toISOString().split('T')[0]}.md`;
-      
-      const originalText = el.vault.innerText;
-      el.vault.innerText = '⌛ Guardando...';
-      el.vault.disabled = true;
-
-      try {
-          const response = await fetch('save-to-vault', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ content, filename })
-          });
-          if (response.ok) {
-              el.vault.innerText = '✅ Guardado!';
-              setTimeout(() => { 
-                  el.vault.innerText = originalText;
-                  el.vault.disabled = false;
-              }, 2000);
-          } else { throw new Error('Error al guardar'); }
-      } catch (err) {
-          console.error(err);
-          el.vault.innerText = '❌ Error';
-          setTimeout(() => { 
-              el.vault.innerText = originalText;
-              el.vault.disabled = false;
-          }, 2000);
+    const content = easyMDE.value();
+    if (!content) return;
+    const filename = prompt('Nombre del archivo (ej: post.md):', `post_${new Date().toISOString().split('T')[0]}.md`);
+    if (!filename) return;
+    try {
+      const response = await fetch('/save-to-vault', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, filename })
+      });
+      const result = await response.json();
+      if (response.ok) {
+        alert(`Guardado en el Vault: ${filename}`);
+      } else {
+        alert('Error: ' + JSON.stringify(result));
       }
+    } catch (e) {
+      alert('Error al guardar en Vault: ' + e.message);
+    }
   };
-  
-  // --- OPERACIONES DE ARCHIVO ---
-  el.cargarArchivoBtn.onclick = () => el.archivoInput.click();
-  el.archivoInput.onchange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => { 
-      easyMDE.value(ev.target.result); 
-      easyMDE.codemirror.focus(); 
-      actualizarVistas();
-    };
-    reader.readAsText(file, 'UTF-8');
-    el.archivoInput.value = '';
-  };
-  
+
+  // --- CARGAR/GUARDAR LOCAL ---
   el.guardarArchivoBtn.onclick = () => {
     const content = easyMDE.value();
     const blob = new Blob([content], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `simply_post_${new Date().toISOString().split('T')[0]}.md`;
+    a.download = 'simply_post.md';
     a.click();
-    URL.revokeObjectURL(url);
   };
-
-  async function exportContent(format) {
-    const content = easyMDE.value();
-    if (!content.trim()) return alert('No hay contenido para exportar.');
-
-    try {
-      const response = await fetch('export', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, format })
-      });
-
-      if (!response.ok) throw new Error('Error en la exportación');
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `simply_export_${new Date().toISOString().split('T')[0]}.${format}`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error(err);
-      alert('Error al exportar: ' + err.message);
-    }
-  }
-
-  el.exportWord.onclick = (e) => { e.preventDefault(); exportContent('docx'); };
-  el.exportExcel.onclick = (e) => { e.preventDefault(); exportContent('xlsx'); };
-  el.exportHtml.onclick = (e) => { e.preventDefault(); exportContent('html'); };
-
-  // --- HERRAMIENTAS DE LIMPIEZA ---
-  el.limpiarGatosBtn.onclick = () => {
-    const text = easyMDE.value();
-    const cleaned = text.split('\n').map(line => {
-      // 1. Quitar los # al inicio
-      let l = line.replace(/^#+\s?/, '');
-      // 2. Quitar los pipes | (tablas)
-      l = l.replace(/\|/g, ' ');
-      // 3. Quitar líneas de separadores de tabla |---|
-      if (/^[-\s|:]+$/.test(l.trim())) return '';
-      // 4. Limpiar espacios extra
-      return l.replace(/\s+/g, ' ').trim();
-    }).filter(line => line !== '').join('\n\n'); // Unimos con doble salto para legibilidad
-
-    easyMDE.value(cleaned);
-    actualizarVistas();
-  };
-
-  el.borrarComentariosBtn.onclick = () => {
-    const text = easyMDE.value();
-    const filtered = text.split('\n').filter(line => !line.trim().startsWith('#')).join('\n');
-    easyMDE.value(filtered);
-    actualizarVistas();
-  };
-
-  // --- EMOJI PICKER ---
-  const emojiPickerContainer = document.createElement('div');
-  emojiPickerContainer.id = 'emoji-picker-container';
-  emojiPickerContainer.style.cssText = 'position: absolute; z-index: 3000; display: none; background: #1E1E1E; border: 1px solid #3c3c3c; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);';
-  document.body.appendChild(emojiPickerContainer);
-
-  let emojiPicker = null, pickerVisible = false;
-  function toggleEmojiPicker() {
-    if (pickerVisible) { hideEmojiPicker(); return; }
-    const rect = el.emojiBtn.getBoundingClientRect();
-    emojiPickerContainer.style.left = (rect.left - 150) + 'px';
-    emojiPickerContainer.style.top = (rect.bottom + 10) + 'px';
-    emojiPickerContainer.style.display = 'block';
-    pickerVisible = true;
-    if (!emojiPicker) {
-      emojiPicker = document.createElement('emoji-picker');
-      emojiPicker.addEventListener('emoji-click', ev => {
-        const cm = easyMDE.codemirror;
-        cm.getDoc().replaceRange(ev.detail.unicode, cm.getDoc().getCursor());
-        cm.focus(); hideEmojiPicker();
-        actualizarVistas();
-      });
-      emojiPickerContainer.appendChild(emojiPicker);
-    }
-    setTimeout(() => document.addEventListener('click', closeEmojiPickerOnClickOutside), 100);
-  }
-  function hideEmojiPicker() { emojiPickerContainer.style.display = 'none'; pickerVisible = false; document.removeEventListener('click', closeEmojiPickerOnClickOutside); }
-  function closeEmojiPickerOnClickOutside(ev) {
-    if (!emojiPickerContainer.contains(ev.target) && ev.target.id !== 'emojiBtn') hideEmojiPicker();
-  }
-  el.emojiBtn.onclick = toggleEmojiPicker;
-
-  document.getElementById('limpiarBtn').onclick = () => { 
-    if (confirm('¿Estás seguro de que quieres limpiar todo el contenido?')) {
-      easyMDE.value(''); 
-      el.outX.textContent = '';
-      el.outLI.textContent = '';
-      if (el.xCounter) el.xCounter.textContent = '280';
+  el.cargarArchivoBtn.onclick = () => el.archivoInput.click();
+  el.archivoInput.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      easyMDE.value(ev.target.result);
       actualizarVistas();
-      localStorage.removeItem('simply-editor-content'); 
-      localStorage.removeItem('simply-x-content');
-      localStorage.removeItem('simply-li-content');
-    }
+    };
+    reader.readAsText(file);
   };
 
-  // --- CARGAR CONTENIDO PERSISTENTE ---
+  // --- FUNCIONES DE UTILIDAD (UNICODE & CLIPBOARD) ---
+  function toBold(str) {
+    return str.replace(/[A-Za-z0-9]/g, c => {
+      if ('A' <= c && c <= 'Z') return String.fromCodePoint(c.charCodeAt(0) + 0x1d400 - 0x41);
+      if ('a' <= c && c <= 'z') return String.fromCodePoint(c.charCodeAt(0) + 0x1d41a - 0x61);
+      if ('0' <= c && c <= '9') return String.fromCodePoint(c.charCodeAt(0) + 0x1d7ce - 0x30);
+      return c;
+    });
+  }
+
+  function toItalic(str) {
+    return str.replace(/[A-Za-z]/g, c => {
+      if ('A' <= c && c <= 'Z') return String.fromCodePoint(c.charCodeAt(0) + 0x1d434 - 0x41);
+      if ('a' <= c && c <= 'z') return String.fromCodePoint(c.charCodeAt(0) + 0x1d44e - 0x61);
+      return c;
+    });
+  }
+
+  function markdownToFacebookUnicode(md) {
+    if (!md) return '';
+    let processed = md;
+    // Negritas
+    processed = processed.replace(/(\*\*|__)(.*?)\1/g, (_, __, text) => toBold(text));
+    // Cursivas
+    processed = processed.replace(/(\*|_)(.*?)\1/g, (_, __, text) => toItalic(text));
+    // Tachado (Facebook usa ~texto~)
+    processed = processed.replace(/~~(.*?)~~/g, (_, text) => `~${text}~`);
+    return processed;
+  }
+
+  const unicodeMaps = {
+    script: { A: '𝒜', B: 'ℬ', C: '𝒞', D: '𝒟', E: 'ℰ', F: 'ℱ', G: '𝒢', H: 'ℋ', I: 'ℐ', J: '𝒥', K: '𝒦', L: 'ℒ', M: 'ℳ', N: '𝒩', O: '𝒪', P: '𝒫', Q: '𝒬', R: 'ℛ', S: '𝒮', T: '𝒯', U: '𝒰', V: '𝒱', W: '𝒲', X: '𝒳', Y: '𝒴', Z: '𝒵', a: '𝒶', b: '𝒷', c: '𝒸', d: '𝒹', e: 'ℯ', f: '𝒻', g: 'ℊ', h: '𝒽', i: '𝒾', j: '𝒿', k: '𝓀', l: '𝓁', m: '𝓂', n: '𝓃', o: 'ℴ', p: '𝓅', q: '𝓆', r: '𝓇', s: '𝓈', t: '𝓉', u: '𝓊', v: '𝓋', w: '𝓌', x: '𝓍', y: '𝓎', z: '𝓏' },
+    fraktur: { A: '𝔄', B: '𝔅', C: 'ℭ', D: '𝔇', E: '𝔈', F: '𝔉', G: '𝔊', H: 'ℌ', I: 'ℑ', J: '𝔍', K: '𝔎', L: '𝔏', M: '𝔐', N: '𝔑', O: '𝔒', P: '𝔓', Q: '𝔔', R: 'ℜ', S: '𝔖', T: '𝔗', U: 'backU', V: '𝔙', W: '𝔚', X: '𝔛', Y: '𝔜', Z: 'ℨ', a: '𝔞', b: '𝔟', c: '𝔠', d: '𝔡', e: '𝔢', f: '𝔣', g: '𝔤', h: '𝔥', i: '𝔦', j: '𝔧', k: '𝔨', l: '𝔩', m: '𝔪', n: '𝔫', o: '𝔬', p: '𝔭', q: '𝔮', r: '𝔯', s: '𝔰', t: '𝔱', u: '𝔲', v: '𝔳', w: '𝔴', x: '𝔵', y: '𝔶', z: '𝔷' },
+    double: { A: '𝔸', B: '𝔹', C: 'ℂ', D: '𝔻', E: '𝔼', F: '𝔽', G: '𝔾', H: 'ℍ', I: '𝕀', J: '𝕁', K: '𝕂', L: '𝕃', M: '𝕄', N: 'ℕ', O: '𝕆', P: 'ℙ', Q: 'ℚ', R: 'ℝ', S: '𝕊', T: '𝕋', U: '𝕌', V: '', W: '𝕎', X: '𝕏', Y: '𝕐', Z: 'ℤ', a: '𝕒', b: '𝕓', c: '𝕔', d: '𝕕', e: '𝕖', f: '𝕗', g: '𝕘', h: '𝕙', i: '𝕚', j: '𝕛', k: '𝕜', l: '𝕝', m: '𝕞', n: '𝕟', o: '𝕠', p: '𝕡', q: '𝕢', r: '𝕣', s: '𝕤', t: '𝕥', u: '𝕦', v: '𝕧', w: '𝕨', x: '𝕩', y: '𝕪', z: '𝕫' },
+    sansbold: { A: '𝗔', B: '𝗕', C: '𝗖', D: '𝗗', E: '𝗘', F: '𝗙', G: '𝗚', H: '𝗛', I: '𝗜', J: '𝗝', K: '𝗞', L: '𝗟', M: '𝗠', N: '𝗡', O: '𝗢', P: '𝗣', Q: '𝗤', R: '𝗥', S: '𝗦', T: '𝗧', U: '𝗨', V: '𝗩', W: '𝗪', X: '𝗫', Y: '𝗬', Z: '𝗭', a: '𝗮', b: '𝗯', c: '𝗰', d: '𝗱', e: '𝗲', f: '𝗳', g: '𝗴', h: '𝗵', i: '𝗶', j: '𝗷', k: '𝗸', l: '𝗹', m: '𝗺', n: '𝗻', o: '𝗼', p: '𝗽', q: '𝗾', r: '𝗿', s: '𝘀', t: '𝘁', u: '𝘂', v: '𝘃', w: '𝘄', x: '𝘅', y: '𝘆', z: '𝘇' },
+    circled: { A: 'Ⓐ', B: 'Ⓑ', C: 'Ⓒ', D: 'Ⓓ', E: 'Ⓔ', F: 'Ⓕ', G: 'Ⓖ', H: 'Ⓗ', I: 'Ⓘ', J: 'Ⓙ', K: 'Ⓚ', L: 'Ⓛ', M: 'Ⓜ', N: 'Ⓝ', O: 'Ⓞ', P: 'Ⓟ', Q: 'Ⓠ', R: 'Ⓡ', S: 'Ⓢ', T: 'Ⓣ', U: 'Ⓤ', V: 'Ⓥ', W: 'Ⓦ', X: 'Ⓧ', Y: 'Ⓨ', Z: 'Ⓩ', a: 'ⓐ', b: 'ⓑ', c: 'ⓒ', d: 'ⓓ', e: 'ⓔ', f: 'ⓕ', g: 'ⓖ', h: 'ⓗ', i: 'ⓘ', j: 'ⓙ', k: 'ⓚ', l: 'ⓛ', m: 'ⓜ', n: 'ⓝ', o: 'ⓞ', p: 'ⓟ', q: 'ⓠ', r: 'ⓡ', s: 'ⓢ', t: 'ⓣ', u: 'ⓤ', v: 'Ⓥ', w: 'ⓦ', x: 'ⓧ', y: 'ⓨ', z: 'ⓩ' },
+    squared: { A: '🄰', B: '🄱', C: '🄲', D: '🄳', E: '🄴', F: '🄵', G: '🄶', H: '🄷', I: '🄸', J: '🄹', K: '🄺', L: '🄻', M: '🄼', N: '🄽', O: '🄾', P: '🄿', Q: '🅀', R: '🅁', S: '🅂', T: '🅃', U: '🅄', V: '🅅', W: '🅆', X: '🅇', Y: '🅈', Z: '🅉', a: '🄰', b: '🄱', c: '🄲', d: '🄳', e: '🄴', f: '🄵', g: '🄶', h: '🄷', i: '🄸', j: '🄹', k: '🄺', l: '🄻', m: '🄼', n: '🄽', o: '🄾', p: '🄿', q: '🅀', r: '🅁', s: '🅂', t: '🅃', u: '🅄', v: '🅅', w: '🅆', x: '🅇', y: '🅈', z: '🅉' },
+    fullwidth: { A: 'Ａ', B: 'Ｂ', C: 'Ｃ', D: 'Ｄ', E: 'Ｅ', F: 'Ｆ', G: 'Ｇ', H: 'Ｈ', I: 'Ｉ', J: 'Ｊ', K: 'Ｋ', L: 'Ｌ', M: 'Ｍ', N: 'Ｎ', O: 'Ｏ', P: 'Ｐ', Q: 'Ｑ', R: 'Ｒ', S: 'Ｓ', T: 'Ｔ', U: 'Ｕ', V: 'Ｖ', W: 'Ｗ', X: 'Ｘ', Y: 'Ｙ', Z: 'Ｚ', a: 'ａ', b: 'ｂ', c: 'ｃ', d: 'ｄ', e: 'ｅ', f: 'ｆ', g: 'ｇ', h: 'ｈ', i: 'ｉ', j: 'ｊ', k: 'ｋ', l: 'ｌ', m: 'ｍ', n: 'ｎ', o: 'ｏ', p: 'ｐ', q: 'ｑ', r: 'ｒ', s: 'ｓ', t: 'ｔ', u: 'ｕ', v: 'ｖ', w: 'ｗ', x: 'ｘ', y: 'ｙ', z: 'ｚ' }
+  };
+
+  function applyTextStyle(text, style) {
+    if (style === 'bold') return toBold(text);
+    if (style === 'italic') return toItalic(text);
+    const map = unicodeMaps[style];
+    if (!map) return text;
+    return text.split('').map(c => map[c] || c).join('');
+  }
+
+  async function copyToClipboard(text, btn) {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      const originalText = btn.textContent;
+      btn.textContent = 'Copiado ✔';
+      btn.classList.add('btn-success');
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.classList.remove('btn-success');
+      }, 2000);
+    } catch (err) {
+      alert('Error al copiar al portapapeles');
+    }
+  }
+
+  // --- PERSISTENCIA AL CARGAR ---
   function cargarContenidoPersistente() {
     const savedX = localStorage.getItem('simply-x-content');
-    const savedLI = localStorage.getItem('simply-li-content');
-    
     if (savedX) {
       el.outX.textContent = savedX;
       if (el.xCounter) el.xCounter.textContent = 280 - savedX.length;
     }
+    const savedLI = localStorage.getItem('simply-li-content');
     if (savedLI) {
       el.outLI.textContent = savedLI;
     }
@@ -821,6 +832,14 @@ Ejemplo: Tendencias en neurociencia y salud cerebral 2024`;
       actualizarVistas();
     } catch (e) { alert('No se pudo acceder al portapapeles'); }
   };
+
+  document.getElementById('limpiarBtn').onclick = () => {
+    if (confirm('¿Quieres limpiar todo el editor?')) {
+      easyMDE.value('');
+      actualizarVistas();
+    }
+  };
+
   document.getElementById('themeToggle').onclick = () => { 
     document.body.classList.toggle('theme-sketch'); 
     localStorage.setItem('simply-theme', document.body.classList.contains('theme-sketch') ? 'sketch' : 'dark'); 
@@ -829,4 +848,5 @@ Ejemplo: Tendencias en neurociencia y salud cerebral 2024`;
 
   loadPrompts();
   actualizarVistas();
-})();
+
+  })();
