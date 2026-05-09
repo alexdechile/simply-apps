@@ -222,58 +222,93 @@ Regla de Estructura:
 
   easyMDE.codemirror.on('change', actualizarVistas);
 
-  // --- LÓGICA DE BARRA FLOTANTE ---
-  easyMDE.codemirror.on('cursorActivity', () => {
-    const cm = easyMDE.codemirror;
+  // --- SINCRONIZACIÓN Y UI ---
+  let isSyncingEditor = false;
+  let isSyncingOutput = false;
+
+  function getActiveOutput() {
+    if (state.activeChannel === 'fb') return el.outFB;
+    if (state.activeChannel === 'x') return el.outX;
+    if (state.activeChannel === 'li') return el.outLI;
+    return null;
+  }
+
+  function syncScroll(source, target) {
+    if (!source || !target) return;
+    const sourceHeight = source.scrollHeight - source.clientHeight;
+    if (sourceHeight <= 0) return;
+    const scrollPercent = source.scrollTop / sourceHeight;
+    target.scrollTop = scrollPercent * (target.scrollHeight - target.clientHeight);
+  }
+
+  // Evento unificado para cursor y barra flotante
+  easyMDE.codemirror.on('cursorActivity', (cm) => {
     const menu = el.formatMenu;
     if (!menu) return;
 
+    // 1. Barra Flotante
     if (cm.somethingSelected()) {
       const cursor = cm.cursorCoords(false, 'window');
       menu.classList.add('visible');
       
-      // Posicionamiento dinámico
       const menuWidth = menu.offsetWidth || 340;
       const menuHeight = menu.offsetHeight || 45;
       
       let left = cursor.left + (cursor.right - cursor.left) / 2 - menuWidth / 2;
       let top = cursor.top - menuHeight - 15;
       
-      // Evitar desbordamiento
+      // Ajuste para posición fixed (coordenadas de ventana)
       if (left < 10) left = 10;
       if (left + menuWidth > window.innerWidth - 10) left = window.innerWidth - menuWidth - 10;
       if (top < 10) top = cursor.bottom + 15;
       
       menu.style.left = left + 'px';
       menu.style.top = top + 'px';
+      menu.style.transform = 'none'; // Eliminar transform para evitar desvíos en fixed
     } else {
       menu.classList.remove('visible');
     }
+
+    // 2. Sincronización de scroll al mover el cursor (hacia abajo)
+    const activeOutput = getActiveOutput();
+    if (activeOutput) {
+      const cursor = cm.getCursor();
+      const coords = cm.charCoords(cursor, 'local');
+      const scrollInfo = cm.getScrollInfo();
+      const scrollPercent = coords.top / (scrollInfo.height - scrollInfo.clientHeight);
+      
+      if (!isNaN(scrollPercent)) {
+        activeOutput.scrollTop = scrollPercent * (activeOutput.scrollHeight - activeOutput.clientHeight);
+      }
+    }
   });
 
-  // --- SCROLL SINCRONIZADO ---
   easyMDE.codemirror.on('scroll', (cm) => {
-    try {
-      const scrollInfo = cm.getScrollInfo();
-      const denominator = scrollInfo.height - scrollInfo.clientHeight;
-      if (denominator <= 0) return;
-
-      const scrollPercent = scrollInfo.top / denominator;
-
-      let activeOutput;
-      if (state.activeChannel === 'fb') activeOutput = el.outFB;
-      else if (state.activeChannel === 'x') activeOutput = el.outX;
-      else if (state.activeChannel === 'li') activeOutput = el.outLI;
-
-      if (activeOutput) {
-        const targetDenominator = activeOutput.scrollHeight - activeOutput.clientHeight;
-        if (targetDenominator > 0) {
-          activeOutput.scrollTop = scrollPercent * targetDenominator;
-        }
-      }
-    } catch (err) {
-      // Fallar silenciosamente en el scroll para no bloquear el editor
+    if (isSyncingEditor) {
+      isSyncingEditor = false;
+      return;
     }
+    isSyncingOutput = true;
+    syncScroll(cm.getScrollerElement(), getActiveOutput());
+  });
+
+  // Permitir scroll desde el output hacia el editor
+  [el.outFB, el.outX, el.outLI].forEach(output => {
+    if (!output) return;
+    output.addEventListener('scroll', () => {
+      if (isSyncingOutput) {
+        isSyncingOutput = false;
+        return;
+      }
+      isSyncingEditor = true;
+      const cm = easyMDE.codemirror;
+      const scroller = cm.getScrollerElement();
+      const outputHeight = output.scrollHeight - output.clientHeight;
+      if (outputHeight > 0) {
+        const scrollPercent = output.scrollTop / outputHeight;
+        scroller.scrollTop = scrollPercent * (scroller.scrollHeight - scroller.clientHeight);
+      }
+    });
   });
 
   // --- IA donalex:1717 ---
@@ -605,6 +640,21 @@ Genera un reporte "Simply Style" con esta estructura:
   el.genX.onclick = () => generarDerivado('x');
   el.genLI.onclick = () => generarDerivado('li');
 
+  // --- BOTONES DE COPIA ROBUSTOS ---
+  function setupCopyButton(btnId, targetEl) {
+    const btn = document.getElementById(btnId);
+    if (!btn || !targetEl) return;
+    
+    btn.onclick = () => {
+      const text = targetEl.textContent;
+      copyToClipboard(text, btn);
+    };
+  }
+
+  setupCopyButton('copyBtn', el.outFB);
+  setupCopyButton('copyXBtn', el.outX);
+  setupCopyButton('copyLIBtn', el.outLI);
+
   // --- HERRAMIENTAS DE TEXTO ---
   if (el.limpiarBtn) {
     el.limpiarBtn.onclick = () => {
@@ -626,9 +676,24 @@ Genera un reporte "Simply Style" con esta estructura:
       const cm = easyMDE.codemirror;
       const selection = cm.getSelection();
       if (!selection) return;
-      const transformed = applyTextStyle(selection, style);
-      cm.replaceSelection(transformed);
+
+      let wrapped;
+      switch(style) {
+        case 'bold': wrapped = `**${selection}**`; break;
+        case 'italic': wrapped = `*${selection}*`; break;
+        case 'script': wrapped = `{s}${selection}{/s}`; break;
+        case 'fraktur': wrapped = `{f}${selection}{/f}`; break;
+        case 'double': wrapped = `{d}${selection}{/d}`; break;
+        case 'sansbold': wrapped = `{sb}${selection}{/sb}`; break;
+        case 'circled': wrapped = `{c}${selection}{/c}`; break;
+        case 'squared': wrapped = `{sq}${selection}{/sq}`; break;
+        case 'fullwidth': wrapped = `{fw}${selection}{/fw}`; break;
+        default: wrapped = selection;
+      }
+      
+      cm.replaceSelection(wrapped);
       el.formatMenu.classList.remove('visible');
+      actualizarVistas();
     };
   });
 
@@ -768,32 +833,42 @@ Genera un reporte "Simply Style" con esta estructura:
   function markdownToFacebookUnicode(md) {
     if (!md) return '';
     let processed = md;
-    // Negritas
+    
+    // Negritas y Cursivas Estándar
+    processed = processed.replace(/(\*\*\*|___)(.*?)\1/g, (_, __, text) => toBold(toItalic(text)));
     processed = processed.replace(/(\*\*|__)(.*?)\1/g, (_, __, text) => toBold(text));
-    // Cursivas
     processed = processed.replace(/(\*|_)(.*?)\1/g, (_, __, text) => toItalic(text));
+    
+    // Etiquetas Especiales Unicode
+    processed = processed.replace(/\{s\}(.*?)\{\/s\}/g, (_, text) => applyStyle(text, 'script'));
+    processed = processed.replace(/\{f\}(.*?)\{\/f\}/g, (_, text) => applyStyle(text, 'fraktur'));
+    processed = processed.replace(/\{d\}(.*?)\{\/d\}/g, (_, text) => applyStyle(text, 'double'));
+    processed = processed.replace(/\{sb\}(.*?)\{\/sb\}/g, (_, text) => applyStyle(text, 'sansbold'));
+    processed = processed.replace(/\{c\}(.*?)\{\/c\}/g, (_, text) => applyStyle(text, 'circled'));
+    processed = processed.replace(/\{sq\}(.*?)\{\/sq\}/g, (_, text) => applyStyle(text, 'squared'));
+    processed = processed.replace(/\{fw\}(.*?)\{\/fw\}/g, (_, text) => applyStyle(text, 'fullwidth'));
+    
     // Tachado (Facebook usa ~texto~)
     processed = processed.replace(/~~(.*?)~~/g, (_, text) => `~${text}~`);
+    
     return processed;
+  }
+
+  function applyStyle(text, style) {
+    const map = unicodeMaps[style];
+    if (!map) return text;
+    return text.split('').map(c => map[c] || c).join('');
   }
 
   const unicodeMaps = {
     script: { A: '𝒜', B: 'ℬ', C: '𝒞', D: '𝒟', E: 'ℰ', F: 'ℱ', G: '𝒢', H: 'ℋ', I: 'ℐ', J: '𝒥', K: '𝒦', L: 'ℒ', M: 'ℳ', N: '𝒩', O: '𝒪', P: '𝒫', Q: '𝒬', R: 'ℛ', S: '𝒮', T: '𝒯', U: '𝒰', V: '𝒱', W: '𝒲', X: '𝒳', Y: '𝒴', Z: '𝒵', a: '𝒶', b: '𝒷', c: '𝒸', d: '𝒹', e: 'ℯ', f: '𝒻', g: 'ℊ', h: '𝒽', i: '𝒾', j: '𝒿', k: '𝓀', l: '𝓁', m: '𝓂', n: '𝓃', o: 'ℴ', p: '𝓅', q: '𝓆', r: '𝓇', s: '𝓈', t: '𝓉', u: '𝓊', v: '𝓋', w: '𝓌', x: '𝓍', y: '𝓎', z: '𝓏' },
     fraktur: { A: '𝔄', B: '𝔅', C: 'ℭ', D: '𝔇', E: '𝔈', F: '𝔉', G: '𝔊', H: 'ℌ', I: 'ℑ', J: '𝔍', K: '𝔎', L: '𝔏', M: '𝔐', N: '𝔑', O: '𝔒', P: '𝔓', Q: '𝔔', R: 'ℜ', S: '𝔖', T: '𝔗', U: 'backU', V: '𝔙', W: '𝔚', X: '𝔛', Y: '𝔜', Z: 'ℨ', a: '𝔞', b: '𝔟', c: '𝔠', d: '𝔡', e: '𝔢', f: '𝔣', g: '𝔤', h: '𝔥', i: '𝔦', j: '𝔧', k: '𝔨', l: '𝔩', m: '𝔪', n: '𝔫', o: '𝔬', p: '𝔭', q: '𝔮', r: '𝔯', s: '𝔰', t: '𝔱', u: '𝔲', v: '𝔳', w: '𝔴', x: '𝔵', y: '𝔶', z: '𝔷' },
     double: { A: '𝔸', B: '𝔹', C: 'ℂ', D: '𝔻', E: '𝔼', F: '𝔽', G: '𝔾', H: 'ℍ', I: '𝕀', J: '𝕁', K: '𝕂', L: '𝕃', M: '𝕄', N: 'ℕ', O: '𝕆', P: 'ℙ', Q: 'ℚ', R: 'ℝ', S: '𝕊', T: '𝕋', U: '𝕌', V: '', W: '𝕎', X: '𝕏', Y: '𝕐', Z: 'ℤ', a: '𝕒', b: '𝕓', c: '𝕔', d: '𝕕', e: '𝕖', f: '𝕗', g: '𝕘', h: '𝕙', i: '𝕚', j: '𝕛', k: '𝕜', l: '𝕝', m: '𝕞', n: '𝕟', o: '𝕠', p: '𝕡', q: '𝕢', r: '𝕣', s: '𝕤', t: '𝕥', u: '𝕦', v: '𝕧', w: '𝕨', x: '𝕩', y: '𝕪', z: '𝕫' },
-    sansbold: { A: '𝗔', B: '𝗕', C: '𝗖', D: '𝗗', E: '𝗘', F: '𝗙', G: '𝗚', H: '𝗛', I: '𝗜', J: '𝗝', K: '𝗞', L: '𝗟', M: '𝗠', N: '𝗡', O: '𝗢', P: '𝗣', Q: '𝗤', R: '𝗥', S: '𝗦', T: '𝗧', U: '𝗨', V: '𝗩', W: '𝗪', X: '𝗫', Y: '𝗬', Z: '𝗭', a: '𝗮', b: '𝗯', c: '𝗰', d: '𝗱', e: '𝗲', f: '𝗳', g: '𝗴', h: '𝗵', i: '𝗶', j: '𝗷', k: '𝗸', l: '𝗹', m: '𝗺', n: '𝗻', o: '𝗼', p: '𝗽', q: '𝗾', r: '𝗿', s: '𝘀', t: '𝘁', u: '𝘂', v: '𝘃', w: '𝘄', x: '𝘅', y: '𝘆', z: '𝘇' },
+    sansbold: { A: '𝗔', B: '𝗕', C: '𝗖', D: '𝗗', E: '𝗘', F: '𝗙', G: '𝗚', H: '𝗛', I: '𝗜', J: '𝗝', K: '𝗞', L: '𝗟', M: '𝗠', N: '𝗡', O: '𝗢', P: '𝗣', Q: '𝗤', R: '𝗥', S: '𝗦', T: '𝗧', U: '𝗨', V: '𝗩', W: '𝗪', X: '𝗫', Y: '𝗬', Z: '𝗭', a: '𝗮', b: '𝗯', c: '𝗰', d: 'ｄ', e: 'ｅ', f: 'ｆ', g: 'ｇ', h: 'ｈ', i: 'ｉ', j: 'ｊ', k: 'ｋ', l: 'ｌ', m: 'ｍ', n: 'ｎ', o: 'ｏ', p: 'ｐ', q: 'ｑ', r: 'ｒ', s: 'ｓ', t: 'ｔ', u: 'ｕ', v: '𝘃', w: '𝓌', x: '𝓍', y: '𝓎', z: '𝓏' },
     circled: { A: 'Ⓐ', B: 'Ⓑ', C: 'Ⓒ', D: 'Ⓓ', E: 'Ⓔ', F: 'Ⓕ', G: 'Ⓖ', H: 'Ⓗ', I: 'Ⓘ', J: 'Ⓙ', K: 'Ⓚ', L: 'Ⓛ', M: 'Ⓜ', N: 'Ⓝ', O: 'Ⓞ', P: 'Ⓟ', Q: 'Ⓠ', R: 'Ⓡ', S: 'Ⓢ', T: 'Ⓣ', U: 'Ⓤ', V: 'Ⓥ', W: 'Ⓦ', X: 'Ⓧ', Y: 'Ⓨ', Z: 'Ⓩ', a: 'ⓐ', b: 'ⓑ', c: 'ⓒ', d: 'ⓓ', e: 'ⓔ', f: 'ⓕ', g: 'ⓖ', h: 'ⓗ', i: 'ⓘ', j: 'ⓙ', k: 'ⓚ', l: 'ⓛ', m: 'ⓜ', n: 'ⓝ', o: 'ⓞ', p: 'ⓟ', q: 'ⓠ', r: 'ⓡ', s: 'ⓢ', t: 'ⓣ', u: 'ⓤ', v: 'Ⓥ', w: 'ⓦ', x: 'ⓧ', y: 'ⓨ', z: 'ⓩ' },
     squared: { A: '🄰', B: '🄱', C: '🄲', D: '🄳', E: '🄴', F: '🄵', G: '🄶', H: '🄷', I: '🄸', J: '🄹', K: '🄺', L: '🄻', M: '🄼', N: '🄽', O: '🄾', P: '🄿', Q: '🅀', R: '🅁', S: '🅂', T: '🅃', U: '🅄', V: '🅅', W: '🅆', X: '🅇', Y: '🅈', Z: '🅉', a: '🄰', b: '🄱', c: '🄲', d: '🄳', e: '🄴', f: '🄵', g: '🄶', h: '🄷', i: '🄸', j: '🄹', k: '🄺', l: '🄻', m: '🄼', n: '🄽', o: '🄾', p: '🄿', q: '🅀', r: '🅁', s: '🅂', t: '🅃', u: '🅄', v: '🅅', w: '🅆', x: '🅇', y: '🅈', z: '🅉' },
     fullwidth: { A: 'Ａ', B: 'Ｂ', C: 'Ｃ', D: 'Ｄ', E: 'Ｅ', F: 'Ｆ', G: 'Ｇ', H: 'Ｈ', I: 'Ｉ', J: 'Ｊ', K: 'Ｋ', L: 'Ｌ', M: 'Ｍ', N: 'Ｎ', O: 'Ｏ', P: 'Ｐ', Q: 'Ｑ', R: 'Ｒ', S: 'Ｓ', T: 'Ｔ', U: 'Ｕ', V: 'Ｖ', W: 'Ｗ', X: 'Ｘ', Y: 'Ｙ', Z: 'Ｚ', a: 'ａ', b: 'ｂ', c: 'ｃ', d: 'ｄ', e: 'ｅ', f: 'ｆ', g: 'ｇ', h: 'ｈ', i: 'ｉ', j: 'ｊ', k: 'ｋ', l: 'ｌ', m: 'ｍ', n: 'ｎ', o: 'ｏ', p: 'ｐ', q: 'ｑ', r: 'ｒ', s: 'ｓ', t: 'ｔ', u: 'ｕ', v: 'ｖ', w: 'ｗ', x: 'ｘ', y: 'ｙ', z: 'ｚ' }
   };
-
-  function applyTextStyle(text, style) {
-    if (style === 'bold') return toBold(text);
-    if (style === 'italic') return toItalic(text);
-    const map = unicodeMaps[style];
-    if (!map) return text;
-    return text.split('').map(c => map[c] || c).join('');
-  }
 
   async function copyToClipboard(text, btn) {
     if (!text) return;
