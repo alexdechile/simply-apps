@@ -30,10 +30,14 @@
       <div class="header-center d-flex gap-2">
         <button id="pensarBtn" class="action-btn ai-btn" title="Reflexión IA (donalex:1717)">🧠 Pensar</button>
         <button id="investigarBtn" class="action-btn ai-btn" title="Investigar tema con Scrapling">🔍 Investigar</button>
+
+        <button id="cancionBtn" class="action-btn ai-btn" title="Post completo de canción con IA">🎵 Post</button>
+        <button id="techBtn" class="action-btn ai-btn" title="Crónica tecnológica con IA">💻 Tech</button>
+        <button id="newsBtn" class="action-btn ai-btn" title="Análisis de noticias e investigación con IA">📰 News</button>
         <button id="format-btn" class="action-btn" title="Formato Unicode">𝔄</button>
         <button id="emojiBtn" class="action-btn" title="Insertar Emoji">😊</button>
         <button id="limpiarGatosBtn" class="action-btn" title="Quitar solo los #">Limpiar #</button>
-        <button id="borrarComentariosBtn" class="action-btn" title="Borrar líneas #">Borrar Comentarios</button>
+        <button id="borrarComentariosBtn" class="action-btn" title="Borrar líneas #">Borrar #</button>
       </div>
 
       <div class="header-right d-flex gap-2">
@@ -114,23 +118,23 @@
           <div id="config-container" class="tab-content flex-grow-1 p-3 overflow-y-auto" style="height: 550px;">
             <div class="mb-3">
               <label class="form-label small fw-bold text-dim">Prompt FB - Coloquial</label>
-              <textarea id="promptFB_col" class="form-control form-control-sm bg-dark text-white border-secondary" rows="3"></textarea>
+              <textarea id="promptFB_col" class="form-control form-control-sm bg-dark text-white border-secondary" rows="66"></textarea>
             </div>
             <div class="mb-3">
               <label class="form-label small fw-bold text-dim">Prompt FB - Comercial</label>
-              <textarea id="promptFB_com" class="form-control form-control-sm bg-dark text-white border-secondary" rows="3"></textarea>
+              <textarea id="promptFB_com" class="form-control form-control-sm bg-dark text-white border-secondary" rows="66"></textarea>
             </div>
             <div class="mb-3">
               <label class="form-label small fw-bold text-dim">Prompt FB - Neutro</label>
-              <textarea id="promptFB_neu" class="form-control form-control-sm bg-dark text-white border-secondary" rows="3"></textarea>
+              <textarea id="promptFB_neu" class="form-control form-control-sm bg-dark text-white border-secondary" rows="66"></textarea>
             </div>
             <div class="mb-3">
               <label class="form-label small fw-bold text-dim">Prompt X (Twitter)</label>
-              <textarea id="promptX" class="form-control form-control-sm bg-dark text-white border-secondary" rows="3"></textarea>
+              <textarea id="promptX" class="form-control form-control-sm bg-dark text-white border-secondary" rows="66"></textarea>
             </div>
             <div class="mb-3">
               <label class="form-label small fw-bold text-dim">Prompt LinkedIn</label>
-              <textarea id="promptLI" class="form-control form-control-sm bg-dark text-white border-secondary" rows="3"></textarea>
+              <textarea id="promptLI" class="form-control form-control-sm bg-dark text-white border-secondary" rows="66"></textarea>
             </div>
             <div class="d-flex gap-2">
               <button id="saveConfigBtn" class="btn btn-sm btn-primary w-100">💾 Guardar Prompts</button>

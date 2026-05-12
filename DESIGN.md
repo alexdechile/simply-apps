@@ -13,6 +13,7 @@ Aplicación web para creación y adaptación de contenido multiplataforma (Faceb
 | IA API | DeepInfra (OpenAI-compatible endpoint) |
 | Motor de Búsqueda | DuckDuckGo HTML + Scrapling (Python) |
 | Exportación | Python (markdown, python-docx, pandas) |
+| Buscadores | Sistema modular en `buscadores/` (DDG + Scrapling) |
 | Bootstrap | 5.3.2 (CDN) |
 
 ## Arquitectura
@@ -23,6 +24,8 @@ server.js
 ├── GET /                    → Sirve frontend estático
 ├── POST /ask-ai             → Proxy a DeepInfra API
 ├── POST /research           → Ejecuta researcher.py (Scrapling)
+├── POST /cancion/completo → ejecuta buscadores/cancion.py (post musical)
+
 ├── POST /export             → Ejecuta exporter.py (docx/xlsx/html)
 └── POST /save-to-vault      → Guarda en /home/alexdechile/vault/posts/
 ```
@@ -38,15 +41,18 @@ script.js
 ├── Persistencia (localStorage)
 ├── Exportación (cliente → servidor → descarga)
 ├── Emoji Picker (emoji-picker-element)
-└── Sincronización scroll editor ↔ preview
+├── Sincronización scroll editor ↔ preview
+└── Post Musical IA (botón 🎵 Post Musical → cancion.py → DeepInfra → inyección)
 ```
 
 ### Python Scripts
 ```
-researcher.py
-├── Búsqueda DuckDuckGo (sencilla 3 links / profunda 5 links)
-├── Extracción con Scrapling (--ai-targeted)
-└── Filtro por dominios prioritarios desde archivos/fuentes.md
+buscadores/
+├── scraper.py        # Módulo compartido: search_ddg(), scrape_url()
+├── cancion.py        # Buscador multi-fuente: Wikipedia + YouTube Music
+└── __init__.py       # Export público
+
+researcher.py         # Ahora importa desde buscadores.scraper
 
 exporter.py
 ├── docx  → python-docx
@@ -121,6 +127,27 @@ Etiquetas markdown personalizadas para texto estilizado:
 - **Gestión:** `systemctl --user [start|stop|restart|status] simply-apps.service`
 - **Logs:** `simply.log` + `journalctl --user -u simply-apps.service -f`
 
+## Buscadores Modulares (`buscadores/`)
+
+Sistema de scripts especializados que comparten utilidades vía `scraper.py`:
+
+### Módulo compartido (`scraper.py`)
+| Función | Descripción |
+|---|---|
+| `search_ddg(query, max_links=3)` | Busca en DuckDuckGo HTML, devuelve `[{title, url}]` |
+| `scrape_url(url, char_limit=4000)` | Extrae contenido vía `scrapling extract` |
+| `get_prioritized_domains()` | Lee `archivos/fuentes.md` para filtrar dominios |
+
+### Buscador de Canciones (`cancion.py`)
+- **Endpoint:** `POST /cancion/completo` → ejecuta `cancion.py` + síntesis DeepInfra
+- **Input:** Consulta libre (`"Queen - Bohemian Rhapsody"`)
+- **Pipeline:**
+  1. Busca Wikipedia via REST API (`/api/rest_v1/page/summary/`)
+  2. Genera URL de YouTube Music
+  3. **Servidor** envía todos los datos a DeepInfra con system prompt especializado
+  4. La IA sintetiza un post con: introducción, datos de producción, curiosidades y enlace a YouTube Music
+- **Frontend:** Botón "🎵 Post" en toolbar → prompt → llama endpoint → IA → inyección
+
 ## Investigación (Research)
 Flujo de 4 pasos:
 1. **Planificación** — IA genera query y dominios de enfoque
@@ -138,7 +165,11 @@ simply-apps/
 ├── style.css            # Estilos y temas
 ├── package.json         # Dependencias Node
 ├── iniciar.sh           # Script de inicio local
-├── researcher.py        # Investigación web (Scrapling)
+├── buscadores/
+│   ├── __init__.py      # Export público
+│   ├── scraper.py       # Módulo compartido (DDG + Scrapling)
+│   ├── cancion.py       # Buscador multi-fuente (wiki + YT Music)
+├── researcher.py        # Investigación web (usa buscadores.scraper)
 ├── exporter.py          # Exportación (docx/xlsx/html)
 ├── archivos/
 │   └── fuentes.md       # Fuentes prioritarias de investigación
@@ -155,3 +186,4 @@ simply-apps/
 - El modal de investigación usa animación slide (slideIn/slideOut) con z-index 5000.
 - La inyección al editor usa API directa de CodeMirror (`getDoc().setValue()`) para evitar problemas con eventos Bootstrap.
 - EasyMDE en script.js es el editor activo. editor.js (Tiptap) es legacy y no se usa.
+- `researcher.py` fue refactorizado para importar `search_ddg`, `scrape_url` y `get_prioritized_domains` desde `buscadores.scraper`.

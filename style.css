@@ -53,8 +53,10 @@ body {
   top: 1rem;
   z-index: 2000;
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
   background: var(--header-bg);
   backdrop-filter: blur(15px);
   padding: 0.8rem 1.5rem;
@@ -193,8 +195,20 @@ body.theme-sketch .tone-selector {
   color: var(--text-main);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  padding: 0.5rem 1rem;
-  font-size: 0.85rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.header-center {
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: center;
+  min-width: 280px;
+}
+
+.header-left, .header-right {
+  flex: 0 0 auto;
 }
 
 body.theme-sketch .action-btn {
@@ -299,7 +313,6 @@ body.theme-sketch .output {
   color: white !important;
   border: none !important;
   font-weight: bold !important;
-  margin-right: 8px;
 }
 
 .ai-btn:hover {

@@ -53,47 +53,85 @@
 
   // --- PROMPTS POR DEFECTO ---
   const defaultPrompts = {
-    fb_col: `Eres un escritor latinoamericano que publica reflexiones personales en redes sociales. 
-Escribe en primera persona con estas características:
+    fb_col: `Eres un escritor latinoamericano que publica reflexiones personales en Facebook. Tu voz es auténtica, cercana y natural.
 
 TONO Y VOZ:
-- Conversacional y cercano, como si hablaras con amigos de confianza
-- Honesto y directo, sin rodeos ni artificios
-- Ligeramente opinático, no temes dar tu punto de vista
-- Informal pero no vulgar
+- Conversacional y directo, como si hablaras con amigos de confianza
+- Honesto y con opinión propia, no temes mostrar vulnerabilidad
+- Informal pero nunca vulgar ni agresivo
 
-ESTILO:
-- Oraciones cortas o medias, nunca rebuscadas
-- Puedes romper reglas gramaticales menores si suena más natural (ej: iniciar con "Pero", "Y", puntuación imperfecta)
-- Nada de listas, títulos ni estructura de blog
-- Cierra siempre de forma humana y cálida (ej: "Un fuerte abrazo")
+ESTRUCTURA DEL POST:
+- Gancho inicial: una frase que atrape (pregunta, confesión, observación cotidiana)
+- Desarrollo narrativo fluido, como contando una historia sin rodeos
+- Cierre cálido y humano (reflexión personal, saludo, invitación a conversar)
 
-EVITAR:
-- Vocabulario demasiado formal o técnico
-- Frases que suenen a marketing o a post optimizado
-- Exceso de signos de puntuación o emojis
+FORMATO FACEBOOK:
+- Párrafos de 1-3 líneas máximo para legibilidad en mobile
+- Oraciones cortas o medias, naturales, nunca rebuscadas
+- Sin listas, títulos, markdown ni estructura de blog
+- Saltos de línea generosos entre párrafos
+- Máximo 1 emoji, solo si es natural
 
-Tu tarea es leer el texto propuesto, verificar si cumple con estas reglas, corregir la ortografía y adaptarlo para que fluya con esta personalidad natural.`,
-    fb_com: `Eres un estratega de contenido comercial disruptivo. Tu objetivo es vender sin parecer un vendedor, usando el 'Storyselling'.
+REGLAS DE PRESERVACIÓN:
+- Mantén el mensaje principal y los puntos clave del texto original
+- NO agregues información, datos, anécdotas o experiencias que no estén en el original
+- NO uses jerga, tecnicismos, frases de marketing o vocabulario forzado
+- NO empieces con frases cliché ("En el mundo actual...", "Es importante destacar...")
+- NO uses puntuación exagerada (!!!, ???, ....)
 
-Tus mandatos de estilo:
-1. El Gancho: Un problema doloroso o un beneficio masivo.
-2. Valor Real: Explica el 'por qué' con profundidad.
-3. Urgencia Elegante: Crea deseo sin desesperación.
+Tu tarea: reescribe el borrador aplicando estas reglas. Devuelve solo el post final.`,
+    fb_com: `Eres un estratega de contenido y copywriter que publica en Facebook. Tu objetivo es vender sin parecer un vendedor, usando storytelling auténtico.
 
-Regla de Estructura:
-- Mantén el flujo narrativo del texto original.
-- Optimiza la legibilidad dividiendo bloques densos de información comercial.`,
-    fb_neu: `Eres un analista de datos objetivo y equilibrado. Tu misión es la claridad absoluta y el rigor informativo.
+TONO Y VOZ:
+- Profesional pero accesible, nunca corporativo ni frío
+- Persuasivo sin ser manipulador
+- Muestra autoridad sin arrogancia
 
-Tus mandatos de estilo:
-1. Objetividad: Hechos antes que opiniones.
-2. Desglose: Divide las ideas complejas en partes digeribles.
-3. Perspectiva: Presenta los pros y contras de forma pragmática.
+ESTRUCTURA DEL POST:
+- El Gancho: un problema real, un beneficio concreto o una historia que conecta emocionalmente
+- Valor Real: explica el "por qué" con profundidad, sin quedarte en la superficie
+- Urgencia Elegante: crea deseo sin desesperación, muestra el costo de no actuar
+- Cierre con propósito: invitación sutil, nunca un llamado agresivo
 
-Regla de Estructura:
-- Respeta la organización lógica del texto original.
-- Separa las ideas en párrafos distintos si detectas que el análisis técnico se vuelve denso.`,
+FORMATO FACEBOOK:
+- Párrafos cortos de 1-3 líneas
+- Evita jerga técnica a menos que sea necesaria para el público
+- Sin markdown, sin formato especial, sin listas numeradas
+- Mantén el flujo narrativo del texto original
+
+REGLAS DE PRESERVACIÓN:
+- Preserva el mensaje principal y los argumentos clave del original
+- NO agregues afirmaciones, datos o testimonios inventados
+- NO uses urgencia falsa ("por tiempo limitado", "últimos días", "oportunidad única")
+- NO caigas en clichés de ventas ("haz clic ahora", "no te lo pierdas")
+
+Tu tarea: reescribe el borrador con esta personalidad comercial. Devuelve solo el post final.`,
+    fb_neu: `Eres un comunicador analítico que publica en Facebook. Tu misión es la claridad absoluta y el rigor informativo, sin perder cercanía con tu audiencia.
+
+TONO Y VOZ:
+- Objetivo y equilibrado: hechos antes que opiniones
+- Claro y accesible: ideas complejas explicadas de forma simple
+- Respetuoso de todas las perspectivas, presentando pros y contras
+
+ESTRUCTURA DEL POST:
+- Contexto inicial: establece el tema y por qué importa
+- Desarrollo ordenado: desglosa ideas complejas en partes digeribles
+- Perspectiva balanceada: presenta ángulos distintos del mismo tema
+- Cierre reflexivo: conclusión abierta o pregunta para pensar
+
+FORMATO FACEBOOK:
+- Párrafos de 2-4 líneas para mantener legibilidad en temas densos
+- Separa ideas distintas en párrafos claros y bien diferenciados
+- Vocabulario preciso pero accesible para el público general
+- Sin markdown, sin formato especial
+
+REGLAS DE PRESERVACIÓN:
+- Mantén los hechos y datos del texto original sin distorsión
+- NO inventes estadísticas, citas o referencias
+- NO tomes partido ni impongas una narrativa única
+- NO simplifiques en exceso ideas que requieren matices
+
+Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo el post final.`,
     x: "Eres donalex:1717. Basándote en el post de Facebook proporcionado, genera un tweet punzante y sintetizado (máx 280 caracteres). Sin Markdown.",
     li: "Eres donalex:1717. Basándote en el post de Facebook proporcionado, genera una versión profesional, técnica y disruptiva para LinkedIn (Thought Leadership)."
   };
@@ -364,12 +402,9 @@ Regla de Estructura:
       const tonePromptEl = el.prompts[state.currentTone];
       const systemPrompt = tonePromptEl ? tonePromptEl.value : defaultPrompts[state.currentTone];
       
-      const userInstruction = `Analiza el siguiente texto y asegúrate de que cumpla estrictamente con tu personalidad y reglas de estilo definidas. 
-Corrige la ortografía y gramática, y adapta el tono según sea necesario para que suene natural y profesional dentro de tu rol.
+      const userInstruction = `Reescribe el siguiente borrador para Facebook aplicando tu personalidad y reglas de estilo. Preserva el mensaje principal, los argumentos clave y la intención del original. No agregues información nueva.
 
-Entrega solo el resultado final, sin introducciones ni comentarios adicionales.
-
-TEXTO A PROCESAR:
+BORRADOR:
 ${text}`;
 
       let fbPost = await callAI(systemPrompt, userInstruction);
@@ -394,6 +429,133 @@ ${text}`;
     }
   }
   el.pensar.onclick = consultarIA;
+
+
+  // --- POST MUSICAL COMPLETO CON IA ---
+  el.cancionBtn = document.getElementById('cancionBtn');
+  if (el.cancionBtn) {
+    el.cancionBtn.onclick = async () => {
+      const query = prompt('¿Qué canción? (ej: "Queen - Bohemian Rhapsody" o "artista - tema")');
+      if (!query) return;
+
+      const originalText = el.cancionBtn.textContent;
+      el.cancionBtn.textContent = '🎵 Recopilando datos...';
+      el.cancionBtn.disabled = true;
+
+      try {
+        const response = await fetch('cancion/completo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(errText || 'Error al generar post musical');
+        }
+
+        const data = await response.json();
+
+        if (confirm(`🎵 Post generado por IA.\n\n¿Inyectar en el editor?`)) {
+          const cm = easyMDE.codemirror;
+          cm.getDoc().setValue(data.content);
+          cm.refresh();
+          cm.scrollTo(0, 0);
+          actualizarVistas();
+        }
+      } catch (e) {
+        console.error(e);
+        alert('Error: ' + e.message);
+      } finally {
+        el.cancionBtn.textContent = originalText;
+        el.cancionBtn.disabled = false;
+      }
+    };
+  }
+
+  // --- POST TECNOLÓGICO CON IA ---
+  el.techBtn = document.getElementById('techBtn');
+  if (el.techBtn) {
+    el.techBtn.onclick = async () => {
+      const query = prompt('¿Sobre qué tecnología o app quieres escribir? (ej: "Docker", "IA en la medicina", "Raycast")');
+      if (!query) return;
+
+      const originalText = el.techBtn.textContent;
+      el.techBtn.textContent = '💻 Analizando tech...';
+      el.techBtn.disabled = true;
+
+      try {
+        const response = await fetch('tech/completo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(errText || 'Error al generar crónica tech');
+        }
+
+        const data = await response.json();
+
+        if (confirm(`💻 Crónica tecnológica generada.\n\n¿Inyectar en el editor?`)) {
+          const cm = easyMDE.codemirror;
+          cm.getDoc().setValue(data.content);
+          cm.refresh();
+          cm.scrollTo(0, 0);
+          actualizarVistas();
+        }
+      } catch (e) {
+        console.error(e);
+        alert('Error: ' + e.message);
+      } finally {
+        el.techBtn.textContent = originalText;
+        el.techBtn.disabled = false;
+      }
+    };
+  }
+
+  // --- POST DE NOTICIAS CON IA ---
+  el.newsBtn = document.getElementById('newsBtn');
+  if (el.newsBtn) {
+    el.newsBtn.onclick = async () => {
+      const query = prompt('¿Qué noticia o tema de actualidad quieres analizar profundamente?');
+      if (!query) return;
+
+      const originalText = el.newsBtn.textContent;
+      el.newsBtn.textContent = '📰 Analizando trasfondo...';
+      el.newsBtn.disabled = true;
+
+      try {
+        const response = await fetch('news/completo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(errText || 'Error al generar análisis de noticias');
+        }
+
+        const data = await response.json();
+
+        if (confirm(`📰 Análisis de noticias generado.\n\n¿Inyectar en el editor?`)) {
+          const cm = easyMDE.codemirror;
+          cm.getDoc().setValue(data.content);
+          cm.refresh();
+          cm.scrollTo(0, 0);
+          actualizarVistas();
+        }
+      } catch (e) {
+        console.error(e);
+        alert('Error: ' + e.message);
+      } finally {
+        el.newsBtn.textContent = originalText;
+        el.newsBtn.disabled = false;
+      }
+    };
+  }
 
   // Elementos del Modal
   const researchModalEl = document.getElementById('researchModal');
@@ -746,7 +908,7 @@ Genera un reporte "Simply Style" con esta estructura:
     const content = easyMDE.value();
     if (!content) return;
     try {
-      const response = await fetch('/export', {
+      const response = await fetch('export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content, format })
@@ -774,7 +936,7 @@ Genera un reporte "Simply Style" con esta estructura:
     const filename = prompt('Nombre del archivo (ej: post.md):', `post_${new Date().toISOString().split('T')[0]}.md`);
     if (!filename) return;
     try {
-      const response = await fetch('/save-to-vault', {
+      const response = await fetch('save-to-vault', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content, filename })
