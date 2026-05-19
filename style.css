@@ -319,6 +319,25 @@ body.theme-sketch .output {
   background-color: #512da8 !important;
 }
 
+.spice-btn {
+  background: linear-gradient(135deg, #6e8efb, #a777e3) !important;
+  color: white !important;
+  border: none !important;
+  font-weight: bold !important;
+  box-shadow: 0 4px 15px rgba(110, 142, 251, 0.4);
+  transition: all 0.3s ease !important;
+}
+
+.spice-btn:hover {
+  background: linear-gradient(135deg, #a777e3, #6e8efb) !important;
+  box-shadow: 0 6px 20px rgba(167, 119, 227, 0.6);
+  transform: translateY(-1px);
+}
+
+.spice-btn:active {
+  transform: translateY(1px);
+}
+
 .stats-panel {
   background: rgba(0, 0, 0, 0.1);
   padding: 0.6rem 1.2rem;

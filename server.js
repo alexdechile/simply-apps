@@ -377,6 +377,92 @@ ${JSON.stringify(researchData, null, 2)}`;
     });
 });
 
+app.post('/ai-analyze', (req, res) => {
+    const { content } = req.body;
+    if (!content) return res.status(400).send('No content provided');
+
+    const analyzerBin = path.join(__dirname, 'simply-analyzer', 'target', 'release', 'simply-analyzer');
+    
+    // Escapar para shell
+    const escapedContent = content.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+    const command = `"${analyzerBin}" "${escapedContent}"`;
+
+    exec(command, { maxBuffer: 1024 * 1024 * 5 }, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`[Rust Analyze] Error: ${error}`);
+            return res.status(500).send(stderr || 'Error al analizar texto con Rust');
+        }
+        try {
+            const results = JSON.parse(stdout);
+            res.send(results);
+        } catch (e) {
+            res.status(500).send('Error parsing Rust output');
+        }
+    });
+});
+
+app.post('/ai-polish', (req, res) => {
+    const { content } = req.body;
+    if (!content) return res.status(400).send('No content provided');
+
+    console.log(`[AI Polish] Polishing text (length: ${content.length})`);
+
+    // Escapar comillas dobles para el comando shell
+    const escapedContent = content.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+    
+    // Prompt de sistema para corrección y pulido
+    const systemPrompt = "Actúa como un editor experto y corrector de estilo. Tu misión es corregir la ortografía, gramática y mejorar la redacción del texto proporcionado, manteniendo estrictamente el estilo original (no cambies el tono ni la intención). Devuelve ÚNICAMENTE el texto corregido, sin explicaciones ni preámbulos.";
+
+    // Usar el path completo de aichat
+    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
+    const command = `echo "${escapedContent}" | ${aichatBin} -S --prompt "${systemPrompt}"`;
+
+    exec(command, { maxBuffer: 1024 * 1024 * 2 }, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`[AI Polish] Error: ${error}`);
+            return res.status(500).send(stderr || 'Error al pulir el texto con aichat');
+        }
+        
+        // Limpiar posibles etiquetas de markdown que aichat pueda agregar
+        let polishedText = stdout.trim();
+        if (polishedText.startsWith('```')) {
+            polishedText = polishedText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
+        }
+
+        console.log(`[AI Polish] Success: Text polished`);
+        res.send({ content: polishedText });
+    });
+});
+
+app.post('/ai-suggest', (req, res) => {
+    const { content } = req.body;
+    if (!content) return res.status(400).send('No content provided');
+
+    console.log(`[AI Suggest] Generating suggestions (length: ${content.length})`);
+
+    const escapedContent = content.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+    
+    const systemPrompt = "Eres un asistente creativo y estratega de contenido. Lee el texto que el usuario ha escrito y sugiere 2 o 3 ideas adicionales, ángulos nuevos o párrafos que podrían continuar o enriquecer el post. Mantén el tono y estilo detectado. Sé breve y directo. Devuelve solo las sugerencias en formato markdown, usando viñetas si es necesario.";
+
+    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
+    const command = `echo "${escapedContent}" | ${aichatBin} -S --prompt "${systemPrompt}"`;
+
+    exec(command, { maxBuffer: 1024 * 1024 * 2 }, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`[AI Suggest] Error: ${error}`);
+            return res.status(500).send(stderr || 'Error al obtener sugerencias con aichat');
+        }
+        
+        let suggestion = stdout.trim();
+        if (suggestion.startsWith('```')) {
+            suggestion = suggestion.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
+        }
+
+        console.log(`[AI Suggest] Success: Suggestions generated`);
+        res.send({ content: suggestion });
+    });
+});
+
 app.post('/export', (req, res) => {
     const { content, format } = req.body;
     if (!content || !format) return res.status(400).send('Missing content or format');

@@ -64,4 +64,38 @@ Sesión de depuración extendida (>2 horas) debido a fallos intermitentes en la 
 ### Resultado:
 Sistema 100% operativo y persistente. Inyección instantánea, previsualización Unicode activa y gestión mediante comandos de sistema (`systemctl`).
 
+## [2026-05-18] Integración de IA Local (aichat) y Motor Rust
+**Agente:** Gemini CLI
+
+### Acciones Realizadas:
+1.  **Integración de aichat (IA Local):**
+    *   Implementación del endpoint `/ai-polish` en `server.js` que utiliza el CLI `aichat` para corrección ortográfica y de estilo.
+    *   Se configuró el uso de la ruta absoluta (`/home/alexdechile/.cargo/bin/aichat`) y el flag `-S` (no-stream) para garantizar estabilidad en el entorno del servidor.
+2.  **Motor de Análisis en Rust:**
+    *   Creación y compilación del proyecto `simply-analyzer` en Rust.
+    *   Implementación del endpoint `/ai-analyze` para cálculo de métricas avanzadas: Densidad Léxica, Tiempo de Lectura, Conteo de Oraciones y Palabras Clave.
+3.  **Mejoras en UI y Frontend:**
+    *   Nuevo botón **✨ Pulir** con estilo degradado y efectos visuales.
+    *   Panel de estadísticas renovado con métricas en tiempo real (debounced a 500ms).
+4.  **Actualización de Documentación:**
+    *   Se actualizaron `DESIGN.md` y `memory.md` para reflejar el nuevo stack tecnológico híbrido (Node.js + Rust + IA).
+
+### Resultado:
+La aplicación ahora cuenta con una capa de inteligencia local ultra-rápida y análisis lingüístico avanzado, funcionando sin errores de endpoint (404) ni de rutas.
+
+## [2026-05-18] Capa de Pensamiento Sugerido
+**Agente:** Gemini CLI
+
+### Acciones Realizadas:
+1.  **Implementación de /ai-suggest:**
+    *   Nuevo endpoint en `server.js` que utiliza `aichat` con un prompt de sistema orientado a la creatividad y sugerencia de ideas/párrafos.
+2.  **Integración en UI:**
+    *   Añadido botón **💡 Sugerir** en el header, al lado de **✨ Pulir**.
+    *   Lógica en `script.js` para llamar al endpoint y ofrecer la inyección (apéndice) mediante un cuadro de confirmación que muestra las sugerencias primero.
+3.  **Documentación:**
+    *   Actualización de `DESIGN.md` para incluir la nueva funcionalidad en la arquitectura.
+
+### Resultado:
+El usuario ahora puede solicitar ideas y párrafos adicionales a la IA local mientras escribe, facilitando el proceso creativo sin salir del editor.
+
 

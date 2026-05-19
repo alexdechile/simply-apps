@@ -28,6 +28,8 @@
       </div>
 
       <div class="header-center d-flex gap-2">
+        <button id="pulirBtn" class="action-btn ai-btn spice-btn" title="Corregir ortografía y pulir redacción (aichat)">✨ Pulir</button>
+        <button id="sugerirBtn" class="action-btn ai-btn" title="Sugerir ideas y párrafos (aichat)">💡 Sugerir</button>
         <button id="pensarBtn" class="action-btn ai-btn" title="Reflexión IA (donalex:1717)">🧠 Pensar</button>
         <button id="investigarBtn" class="action-btn ai-btn" title="Investigar tema con Scrapling">🔍 Investigar</button>
 
@@ -69,9 +71,17 @@
           <div class="editor-inner">
             <textarea id="editor"></textarea>
           </div>
-          <div id="stats-panel" class="stats-panel d-flex justify-content-between">
-            <span>Caracteres: <b id="char-count">0</b></span>
-            <span>Palabras: <b id="word-count">0</b></span>
+          <div id="stats-panel" class="stats-panel d-flex justify-content-between align-items-center">
+            <div class="basic-stats d-flex gap-3">
+              <span>Caracteres: <b id="char-count">0</b></span>
+              <span>Palabras: <b id="word-count">0</b></span>
+              <span id="reading-time-container">Lectura: <b id="reading-time">0</b> min</span>
+            </div>
+            <div id="rust-stats" class="rust-stats d-flex gap-3 small text-dim d-none">
+              <span>Densidad: <b id="lexical-density">0</b>%</span>
+              <span>Oraciones: <b id="sentence-count">0</b></span>
+              <span id="top-words-container" title="Palabras clave">🔑 <span id="top-words"></span></span>
+            </div>
           </div>
         </div>
         <input type="file" id="archivoInput" accept=".md,.txt,.markdown" style="display: none;" />

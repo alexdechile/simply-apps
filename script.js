@@ -22,6 +22,8 @@
     borrarComentariosBtn: document.getElementById('borrarComentariosBtn'),
     emojiBtn: document.getElementById('emojiBtn'),
     investigar: document.getElementById('investigarBtn'),
+    pulir: document.getElementById('pulirBtn'),
+    sugerir: document.getElementById('sugerirBtn'),
     exportWord: document.getElementById('exportWordBtn'),
     exportExcel: document.getElementById('exportExcelBtn'),
     exportHtml: document.getElementById('exportHtmlBtn'),
@@ -236,6 +238,45 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
   });
 
   // --- ACTUALIZACIÓN DE VISTAS ---
+  let analyzeTimeout = null;
+
+  async function analizarConRust(text) {
+    if (!text.trim() || text.length < 5) {
+      const rustPanel = document.getElementById('rust-stats');
+      if (rustPanel) rustPanel.classList.add('d-none');
+      return;
+    }
+
+    try {
+      const response = await fetch('ai-analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text })
+      });
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+      
+      const elRT = document.getElementById('reading-time');
+      const elLD = document.getElementById('lexical-density');
+      const elSC = document.getElementById('sentence-count');
+      const elTW = document.getElementById('top-words');
+      const rustPanel = document.getElementById('rust-stats');
+
+      if (elRT) elRT.textContent = data.reading_time_mins;
+      if (elLD) elLD.textContent = data.lexical_density;
+      if (elSC) elSC.textContent = data.sentence_count;
+      if (elTW) {
+        elTW.textContent = data.top_words.map(w => w[0]).join(', ');
+      }
+      
+      if (rustPanel) rustPanel.classList.remove('d-none');
+    } catch (err) {
+      console.error("Error en análisis Rust:", err);
+    }
+  }
+
   function actualizarVistas() {
     try {
       const md = easyMDE.value();
@@ -251,6 +292,10 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
         const words = md.trim() ? md.trim().split(/\s+/).length : 0;
         wordCountEl.textContent = words;
       }
+
+      // Debounce para el análisis pesado en Rust
+      clearTimeout(analyzeTimeout);
+      analyzeTimeout = setTimeout(() => analizarConRust(md), 500);
 
       localStorage.setItem('simply-editor-content', md);
     } catch (err) {
@@ -348,6 +393,99 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
       }
     });
   });
+
+  // --- PULIR TEXTO CON aichat ---
+  if (el.pulir) {
+    el.pulir.onclick = async () => {
+      const content = easyMDE.value();
+      if (!content.trim()) return;
+
+      const originalText = el.pulir.textContent;
+      el.pulir.textContent = '✨ Puliendo...';
+      el.pulir.disabled = true;
+
+      try {
+        const response = await fetch('ai-polish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(errText || 'Error al pulir el texto');
+        }
+
+        const data = await response.json();
+
+        if (data.content && data.content !== content) {
+          if (confirm(`✨ El texto ha sido pulido y corregido.\n\n¿Quieres inyectar el resultado en el editor?`)) {
+            const cm = easyMDE.codemirror;
+            cm.getDoc().setValue(data.content);
+            cm.refresh();
+            cm.scrollTo(0, 0);
+            actualizarVistas();
+          }
+        } else {
+          alert('✨ El texto ya está impecable (o no se sugirieron cambios).');
+        }
+      } catch (e) {
+        console.error(e);
+        alert('Error al pulir: ' + e.message);
+      } finally {
+        el.pulir.textContent = originalText;
+        el.pulir.disabled = false;
+      }
+    };
+  }
+
+  // --- SUGERIR IDEAS CON aichat ---
+  if (el.sugerir) {
+    el.sugerir.onclick = async () => {
+      const content = easyMDE.value();
+      if (!content.trim()) return;
+
+      const originalText = el.sugerir.textContent;
+      el.sugerir.textContent = '💡 Sugiriendo...';
+      el.sugerir.disabled = true;
+
+      try {
+        const response = await fetch('ai-suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(errText || 'Error al obtener sugerencias');
+        }
+
+        const data = await response.json();
+
+        if (data.content) {
+          if (confirm(`💡 Sugerencias de la IA:\n\n${data.content}\n\n¿Quieres añadir estas ideas al final del editor?`)) {
+            const cm = easyMDE.codemirror;
+            const currentVal = cm.getValue();
+            const newVal = currentVal + '\n\n---\n\n💡 **Sugerencias:**\n' + data.content;
+            cm.getDoc().setValue(newVal);
+            cm.refresh();
+            // Scroll al final para ver las sugerencias
+            cm.scrollTo(0, cm.getScrollInfo().height);
+            actualizarVistas();
+          }
+        } else {
+          alert('💡 La IA no tiene sugerencias adicionales por ahora.');
+        }
+      } catch (e) {
+        console.error(e);
+        alert('Error al sugerir: ' + e.message);
+      } finally {
+        el.sugerir.textContent = originalText;
+        el.sugerir.disabled = false;
+      }
+    };
+  }
 
   // --- IA donalex:1717 ---
   async function callAI(systemPrompt, userContent) {

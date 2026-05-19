@@ -20,6 +20,8 @@ Ahora la app corre como un servicio de fondo:
 - **Editor:** EasyMDE / CodeMirror (panel izquierdo)
 - **Preview:** Panel derecho con vista formateada (`output`)
 - **IA API:** DeepInfra (key en `.env` como `DEEPINFRA_API_KEY`)
+- **IA Local:** **aichat** (CLI en Rust) para pulido de texto
+- **Análisis:** **simply-analyzer** (Rust nativo) para métricas avanzadas
 - **Python:** `researcher.py` (Scrapling), `exporter.py` (docx/xlsx/html)
 
 ## Configuración de Timeout
@@ -30,8 +32,9 @@ Ahora la app corre como un servicio de fondo:
 ## Archivos Clave
 | Archivo | Propósito |
 |---|---|
-| `server.js` | Backend Express, proxy IA, endpoints `/ask-ai`, `/research`, `/export`, `/save-to-vault` |
-| `script.js` | Lógica frontend completa (editor, IA, modales, tabs, clipboard, vault) |
+| `server.js` | Backend Express, proxy IA, endpoints `/ask-ai`, `/research`, `/export`, `/save-to-vault`, `/ai-polish`, `/ai-analyze` |
+| `script.js` | Lógica frontend completa (editor, IA, pulido, análisis Rust, modales) |
+| `simply-analyzer/` | Proyecto Rust para análisis de texto de alto rendimiento |
 | `editor.js` | Legacy (Tiptap) — NO se usa, el editor activo es EasyMDE en `script.js` |
 | `index.html` | Estructura, modales, toolbar |
 | `style.css` | Estilos, temas, animaciones modal |

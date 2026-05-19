@@ -11,6 +11,8 @@ Aplicación web para creación y adaptación de contenido multiplataforma (Faceb
 | Editor | EasyMDE (CodeMirror) con tema oscuro |
 | Editor Legacy | Tiptap (`editor.js`) — no utilizado actualmente |
 | IA API | DeepInfra (OpenAI-compatible endpoint) |
+| IA Local | **aichat** (Rust-based CLI) para pulido de texto |
+| Analizador | **simply-analyzer** (Rust nativo) para métricas avanzadas |
 | Motor de Búsqueda | DuckDuckGo HTML + Scrapling (Python) |
 | Exportación | Python (markdown, python-docx, pandas) |
 | Buscadores | Sistema modular en `buscadores/` (DDG + Scrapling) |
@@ -24,8 +26,10 @@ server.js
 ├── GET /                    → Sirve frontend estático
 ├── POST /ask-ai             → Proxy a DeepInfra API
 ├── POST /research           → Ejecuta researcher.py (Scrapling)
-├── POST /cancion/completo → ejecuta buscadores/cancion.py (post musical)
-
+├── POST /cancion/completo   → Ejecuta buscadores/cancion.py (post musical)
+├── POST /ai-polish          → Ejecuta aichat CLI (pulido de texto)
+├── POST /ai-suggest         → Ejecuta aichat CLI (sugerencia de ideas/párrafos)
+├── POST /ai-analyze         → Ejecuta simply-analyzer (Rust) para métricas
 ├── POST /export             → Ejecuta exporter.py (docx/xlsx/html)
 └── POST /save-to-vault      → Guarda en /home/alexdechile/vault/posts/
 ```
@@ -37,6 +41,9 @@ script.js
 ├── Sistema de Tono (Coloquial / Comercial / Neutro)
 ├── Tabs (FB / X / LI / Config)
 ├── Barra de formato flotante (Unicode)
+├── Pulido de Texto (botón ✨ Pulir → aichat → inyección)
+├── Sugerir Ideas (botón 💡 Sugerir → aichat → apéndice)
+├── Análisis Real-time (Rust → lectura, densidad, keywords)
 ├── Modal de Investigación (3 pasos: Plan → Scrape → Síntesis)
 ├── Persistencia (localStorage)
 ├── Exportación (cliente → servidor → descarga)
