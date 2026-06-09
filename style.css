@@ -94,13 +94,13 @@ body.theme-sketch .tone-selector {
 }
 
 .app-header h2 {
-  font-size: 1.2rem;
+  font-size: 1rem;
   font-weight: 800;
-  letter-spacing: 2px;
+  letter-spacing: 1px;
   background: linear-gradient(90deg, var(--accent), #9c4dcc);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  margin-right: 1.5rem;
+  margin-right: 1rem;
 }
 
 .app-header h2 span {
@@ -204,7 +204,33 @@ body.theme-sketch .tone-selector {
   flex: 1 1 auto;
   flex-wrap: wrap;
   justify-content: center;
-  min-width: 280px;
+  gap: 0.3rem !important;
+  min-width: 200px;
+}
+
+.header-center .action-btn {
+  background: linear-gradient(135deg, #7c4dff, #b388ff) !important;
+  color: white !important;
+  border: none !important;
+  font-weight: 600 !important;
+  font-size: 0.75rem;
+  padding: 0.3rem 0.55rem;
+  box-shadow: 0 2px 8px rgba(124, 77, 255, 0.25);
+  transition: all 0.2s ease !important;
+}
+
+.header-center .action-btn:hover {
+  background: linear-gradient(135deg, #b388ff, #7c4dff) !important;
+  box-shadow: 0 4px 12px rgba(124, 77, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.header-center .action-btn:active {
+  transform: translateY(1px);
+}
+
+.header-center .btn-group .action-btn {
+  background: linear-gradient(135deg, #7c4dff, #b388ff) !important;
 }
 
 .header-left, .header-right {
@@ -520,4 +546,39 @@ body.theme-sketch .output-li {
   font-size: 0.85rem;
   line-height: 1.6;
   tab-size: 2;
+}
+
+/* Dropdown de selección de modelo */
+#aiModelMenu {
+  max-height: 400px;
+  overflow-y: auto;
+  min-width: 320px;
+}
+
+#aiModelMenu .dropdown-header {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--accent);
+  padding: 0.5rem 1rem 0.25rem;
+}
+
+#aiModelMenu .dropdown-item {
+  font-size: 0.85rem;
+  padding: 0.35rem 1rem;
+  font-family: var(--font-mono);
+}
+
+#aiModelMenu .dropdown-item.active {
+  background-color: var(--accent);
+  color: #fff;
+}
+
+#aiModelMenu::-webkit-scrollbar {
+  width: 6px;
+}
+
+#aiModelMenu::-webkit-scrollbar-thumb {
+  background: var(--text-dim);
+  border-radius: 3px;
 }

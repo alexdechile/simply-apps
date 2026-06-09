@@ -58,6 +58,12 @@ Ahora la app corre como un servicio de fondo:
   3. Llamar a `cm.refresh()` y `cm.focus()` inmediatamente después.
 - **Resultado:** Actualización instantánea, scroll automático al final y estabilidad garantizada.
 
+## Problemas Resueltos: Error 500 en ai-polish y ai-suggest
+- **Estado:** ✅ SOLUCIONADO
+- **Causa:** `aichat` estaba configurado para usar modelos de NVIDIA que fallaban por falta de API Key válida en el entorno, provocando que los endpoints de Express devolvieran un error 500.
+- **Solución:** Se modificó la configuración global de `aichat` (`~/.config/aichat/config.yaml`) para usar **DeepInfra** (meta-llama/Llama-3.3-70B-Instruct) como modelo predeterminado, el cual ya tiene una key funcional en el sistema.
+- **Resultado:** Los botones de "Pulir Texto" y "Sugerir Ideas" funcionan correctamente de nuevo.
+
 
 ## Persistencia
 - Editor: `localStorage` → `simply-editor-content`

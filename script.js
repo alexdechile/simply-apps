@@ -23,6 +23,7 @@
     emojiBtn: document.getElementById('emojiBtn'),
     investigar: document.getElementById('investigarBtn'),
     pulir: document.getElementById('pulirBtn'),
+    decorar: document.getElementById('decorarBtn'),
     sugerir: document.getElementById('sugerirBtn'),
     exportWord: document.getElementById('exportWordBtn'),
     exportExcel: document.getElementById('exportExcelBtn'),
@@ -394,6 +395,66 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
     });
   });
 
+  // --- SELECCION DE MODELO IA ---
+  function getSelectedModel() {
+    return localStorage.getItem('simply-ai-model') || 'nvidia:meta/llama-3.3-70b-instruct';
+  }
+
+  async function initModelSelector() {
+    const menu = document.getElementById('aiModelMenu');
+    const label = document.getElementById('currentModelLabel');
+    if (!menu || !label) return;
+
+    // Cargar modelo guardado
+    const savedModel = getSelectedModel();
+    const savedClient = savedModel.split(':')[0];
+    label.textContent = savedClient.charAt(0).toUpperCase() + savedClient.slice(1);
+
+    try {
+      const res = await fetch('ai-models');
+      if (!res.ok) throw new Error('Error al cargar modelos');
+      const { models } = await res.json();
+
+      // Agrupar por cliente
+      const groups = {};
+      for (const m of models) {
+        if (!groups[m.client]) groups[m.client] = [];
+        groups[m.client].push(m);
+      }
+
+      // Construir dropdown
+      menu.innerHTML = '<li><h6 class="dropdown-header">Modelo de IA</h6></li>';
+      for (const [client, clientModels] of Object.entries(groups)) {
+        const header = document.createElement('li');
+        header.innerHTML = `<h6 class="dropdown-header text-capitalize">${client}</h6>`;
+        menu.appendChild(header);
+
+        for (const m of clientModels) {
+          const item = document.createElement('li');
+          const a = document.createElement('a');
+          a.className = 'dropdown-item' + (m.fullId === savedModel ? ' active' : '');
+          a.href = '#';
+          a.dataset.model = m.fullId;
+          a.textContent = m.name;
+          a.onclick = (e) => {
+            e.preventDefault();
+            localStorage.setItem('simply-ai-model', m.fullId);
+            label.textContent = client.charAt(0).toUpperCase() + client.slice(1);
+            // Actualizar active
+            menu.querySelectorAll('.dropdown-item.active').forEach(el => el.classList.remove('active'));
+            a.classList.add('active');
+          };
+          item.appendChild(a);
+          menu.appendChild(item);
+        }
+      }
+    } catch (e) {
+      console.error('Error loading models:', e);
+      menu.innerHTML = '<li><h6 class="dropdown-header">Modelo de IA</h6></li><li><span class="dropdown-item-text text-danger">Error al cargar modelos</span></li>';
+    }
+  }
+  initModelSelector();
+
   // --- PULIR TEXTO CON aichat ---
   if (el.pulir) {
     el.pulir.onclick = async () => {
@@ -408,7 +469,7 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
         const response = await fetch('ai-polish', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content })
+          body: JSON.stringify({ content, model: getSelectedModel() })
         });
 
         if (!response.ok) {
@@ -439,6 +500,51 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
     };
   }
 
+  // --- DECORAR TEXTO CON aichat ---
+  if (el.decorar) {
+    el.decorar.onclick = async () => {
+      const content = easyMDE.value();
+      if (!content.trim()) return;
+
+      const originalText = el.decorar.textContent;
+      el.decorar.textContent = '🧂 Decorando...';
+      el.decorar.disabled = true;
+
+      try {
+        const response = await fetch('ai-decorate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content, model: getSelectedModel() })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(errText || 'Error al decorar el texto');
+        }
+
+        const data = await response.json();
+
+        if (data.content && data.content !== content) {
+          if (confirm(`🧂 El texto ha sido decorado con sal y pimienta.\n\n¿Quieres inyectar el resultado en el editor?`)) {
+            const cm = easyMDE.codemirror;
+            cm.getDoc().setValue(data.content);
+            cm.refresh();
+            cm.scrollTo(0, 0);
+            actualizarVistas();
+          }
+        } else {
+          alert('🧂 No se sugirieron decoraciones adicionales.');
+        }
+      } catch (e) {
+        console.error(e);
+        alert('Error al decorar: ' + e.message);
+      } finally {
+        el.decorar.textContent = originalText;
+        el.decorar.disabled = false;
+      }
+    };
+  }
+
   // --- SUGERIR IDEAS CON aichat ---
   if (el.sugerir) {
     el.sugerir.onclick = async () => {
@@ -453,7 +559,7 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
         const response = await fetch('ai-suggest', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content })
+          body: JSON.stringify({ content, model: getSelectedModel() })
         });
 
         if (!response.ok) {
@@ -965,10 +1071,30 @@ Genera un reporte "Simply Style" con esta estructura:
     };
   }
 
-  const formatBtn = document.getElementById('format-btn');
-  if (formatBtn && el.formatMenu) {
-    formatBtn.onclick = () => el.formatMenu.classList.toggle('visible');
+  // Barra de formato aparece al seleccionar texto en el editor
+  if (el.formatMenu && easyMDE) {
+    const cm = easyMDE.codemirror;
+    cm.on('cursorActivity', () => {
+      const selection = cm.getSelection();
+      if (selection) {
+        const coords = cm.cursorCoords(true, 'page');
+        const menu = el.formatMenu;
+        menu.style.left = Math.max(10, coords.left - 20) + 'px';
+        menu.style.top = (coords.bottom + 8) + 'px';
+        menu.classList.add('visible');
+      } else {
+        el.formatMenu.classList.remove('visible');
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!el.formatMenu.contains(e.target)) {
+        el.formatMenu.classList.remove('visible');
+      }
+    });
   }
+
+  // Click fuera del menú lo cierra
 
   document.querySelectorAll('.menu-btn').forEach(btn => {
     btn.onclick = () => {
@@ -988,6 +1114,7 @@ Genera un reporte "Simply Style" con esta estructura:
         case 'circled': wrapped = `{c}${selection}{/c}`; break;
         case 'squared': wrapped = `{sq}${selection}{/sq}`; break;
         case 'fullwidth': wrapped = `{fw}${selection}{/fw}`; break;
+        case 'upper': wrapped = selection.toUpperCase(); break;
         default: wrapped = selection;
       }
       
@@ -1112,9 +1239,14 @@ Genera un reporte "Simply Style" con esta estructura:
     reader.readAsText(file);
   };
 
+  const boldExceptions = {
+    'h': '𝐡'
+  };
+
   // --- FUNCIONES DE UTILIDAD (UNICODE & CLIPBOARD) ---
   function toBold(str) {
     return str.replace(/[A-Za-z0-9]/g, c => {
+      if (boldExceptions[c]) return boldExceptions[c];
       if ('A' <= c && c <= 'Z') return String.fromCodePoint(c.charCodeAt(0) + 0x1d400 - 0x41);
       if ('a' <= c && c <= 'z') return String.fromCodePoint(c.charCodeAt(0) + 0x1d41a - 0x61);
       if ('0' <= c && c <= '9') return String.fromCodePoint(c.charCodeAt(0) + 0x1d7ce - 0x30);

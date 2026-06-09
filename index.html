@@ -28,7 +28,17 @@
       </div>
 
       <div class="header-center d-flex gap-2">
+        <div class="btn-group">
+          <button class="action-btn dropdown-toggle" type="button" id="aiModelBtn" data-bs-toggle="dropdown" aria-expanded="false" title="Modelo de IA">
+            🤖 <span id="currentModelLabel">NVIDIA</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-dark" id="aiModelMenu" aria-labelledby="aiModelBtn">
+            <li><h6 class="dropdown-header">Modelos disponibles</h6></li>
+            <li><span class="dropdown-item-text text-secondary" id="aiModelLoading">Cargando...</span></li>
+          </ul>
+        </div>
         <button id="pulirBtn" class="action-btn ai-btn spice-btn" title="Corregir ortografía y pulir redacción (aichat)">✨ Pulir</button>
+        <button id="decorarBtn" class="action-btn ai-btn spice-btn" title="Añadir emojis y decoración (aichat)">🧂 Decorar</button>
         <button id="sugerirBtn" class="action-btn ai-btn" title="Sugerir ideas y párrafos (aichat)">💡 Sugerir</button>
         <button id="pensarBtn" class="action-btn ai-btn" title="Reflexión IA (donalex:1717)">🧠 Pensar</button>
         <button id="investigarBtn" class="action-btn ai-btn" title="Investigar tema con Scrapling">🔍 Investigar</button>
@@ -36,7 +46,6 @@
         <button id="cancionBtn" class="action-btn ai-btn" title="Post completo de canción con IA">🎵 Post</button>
         <button id="techBtn" class="action-btn ai-btn" title="Crónica tecnológica con IA">💻 Tech</button>
         <button id="newsBtn" class="action-btn ai-btn" title="Análisis de noticias e investigación con IA">📰 News</button>
-        <button id="format-btn" class="action-btn" title="Formato Unicode">𝔄</button>
         <button id="emojiBtn" class="action-btn" title="Insertar Emoji">😊</button>
         <button id="limpiarGatosBtn" class="action-btn" title="Quitar solo los #">Limpiar #</button>
         <button id="borrarComentariosBtn" class="action-btn" title="Borrar líneas #">Borrar #</button>
@@ -230,6 +239,7 @@
     <button class="menu-btn" data-style="circled" title="En Círculos">Ⓐ</button>
     <button class="menu-btn" data-style="squared" title="En Cuadros">🄰</button>
     <button class="menu-btn" data-style="fullwidth" title="Ancho Completo">Ｗ</button>
+    <button class="menu-btn" data-style="upper" title="Mayúsculas">A</button>
   </div>
 
   <emoji-picker style="display: none; position: absolute; z-index: 10000;"></emoji-picker>

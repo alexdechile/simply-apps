@@ -15,6 +15,7 @@ app.use(express.json());
 app.use(express.static(__dirname));
 
 const { exec } = require('child_process');
+const yaml = require('js-yaml');
 
 // Configuración de IA (DeepInfra) desde variable de entorno
 const DEEPINFRA_API_KEY = (process.env.DEEPINFRA_API_KEY || '').trim();
@@ -313,13 +314,9 @@ app.post('/news/completo', async (req, res) => {
             console.error(`[News] Error: ${error}`);
             return res.status(500).send(stderr || 'Error al investigar noticia');
         }
+        if (stderr) console.log(`[News] Logs: ${stderr}`);
 
-        let researchData;
-        try {
-            researchData = JSON.parse(stdout);
-        } catch (e) {
-            return res.status(500).send('Error parsing news research data');
-        }
+        const researchData = stdout;
 
         const systemPrompt = `Eres donalex:1717, un analista geopolítico y de actualidad con una pluma afilada y alma de cronista. Tu especialidad no es repetir la noticia, sino explicar QUÉ HAY DETRÁS del anuncio oficial. Buscas las segundas lecturas, los intereses ocultos y el contexto histórico.
 
@@ -347,7 +344,7 @@ REGLAS DE ORO:
 
         const userContent = `Noticia/Tema: ${query}
 Datos encontrados:
-${JSON.stringify(researchData, null, 2)}`;
+${researchData}`;
 
         try {
             const aiResponse = await fetch('https://api.deepinfra.com/v1/openai/chat/completions', {
@@ -401,21 +398,47 @@ app.post('/ai-analyze', (req, res) => {
     });
 });
 
+// Endpoint para listar modelos disponibles desde config.yaml de aichat
+app.get('/ai-models', (req, res) => {
+    const configPath = path.join(process.env.HOME || '/home/alexdechile', '.config/aichat/config.yaml');
+    try {
+        const config = yaml.load(fs.readFileSync(configPath, 'utf8'));
+        const models = [];
+        if (config.clients) {
+            for (const client of config.clients) {
+                if (client.models) {
+                    for (const model of client.models) {
+                        if (model.type !== 'embedding') {
+                            models.push({
+                                client: client.name,
+                                name: model.name,
+                                fullId: `${client.name}:${model.name}`
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        res.json({ models });
+    } catch (e) {
+        console.error('[AI Models] Error:', e.message);
+        res.status(500).json({ error: 'Error al leer configuración de modelos' });
+    }
+});
+
 app.post('/ai-polish', (req, res) => {
-    const { content } = req.body;
+    const { content, model } = req.body;
     if (!content) return res.status(400).send('No content provided');
 
     console.log(`[AI Polish] Polishing text (length: ${content.length})`);
 
-    // Escapar comillas dobles para el comando shell
     const escapedContent = content.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
     
-    // Prompt de sistema para corrección y pulido
     const systemPrompt = "Actúa como un editor experto y corrector de estilo. Tu misión es corregir la ortografía, gramática y mejorar la redacción del texto proporcionado, manteniendo estrictamente el estilo original (no cambies el tono ni la intención). Devuelve ÚNICAMENTE el texto corregido, sin explicaciones ni preámbulos.";
 
-    // Usar el path completo de aichat
     const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const command = `echo "${escapedContent}" | ${aichatBin} -S --prompt "${systemPrompt}"`;
+    const aichatModel = model || 'nvidia:meta/llama-3.3-70b-instruct';
+    const command = `echo "${escapedContent}" | ${aichatBin} -S --model ${aichatModel} --prompt "${systemPrompt}"`;
 
     exec(command, { maxBuffer: 1024 * 1024 * 2 }, (error, stdout, stderr) => {
         if (error) {
@@ -423,7 +446,6 @@ app.post('/ai-polish', (req, res) => {
             return res.status(500).send(stderr || 'Error al pulir el texto con aichat');
         }
         
-        // Limpiar posibles etiquetas de markdown que aichat pueda agregar
         let polishedText = stdout.trim();
         if (polishedText.startsWith('```')) {
             polishedText = polishedText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
@@ -434,8 +456,38 @@ app.post('/ai-polish', (req, res) => {
     });
 });
 
+app.post('/ai-decorate', (req, res) => {
+    const { content, model } = req.body;
+    if (!content) return res.status(400).send('No content provided');
+
+    console.log(`[AI Decorate] Adding salt and pepper (length: ${content.length})`);
+
+    const escapedContent = content.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+
+    const systemPrompt = "Actúa como un experto en estilismo de redes sociales. Tu misión es añadir 'sal y pimienta' al texto: inserta emojis relevantes, negritas estratégicas y algún separador o elemento decorativo sutil si es necesario. IMPORTANTE: NO cambies el significado, ni la estructura, ni el mensaje del texto original. Solo añade la capa visual y decorativa. Devuelve ÚNICAMENTE el texto decorado.";
+
+    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
+    const aichatModel = model || 'nvidia:meta/llama-3.3-70b-instruct';
+    const command = `echo "${escapedContent}" | ${aichatBin} -S --model ${aichatModel} --prompt "${systemPrompt}"`;
+
+    exec(command, { maxBuffer: 1024 * 1024 * 2 }, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`[AI Decorate] Error: ${error}`);
+            return res.status(500).send(stderr || 'Error al decorar el texto con aichat');
+        }
+
+        let decoratedText = stdout.trim();
+        if (decoratedText.startsWith('```')) {
+            decoratedText = decoratedText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
+        }
+
+        console.log(`[AI Decorate] Success: Text decorated`);
+        res.send({ content: decoratedText });
+    });
+});
+
 app.post('/ai-suggest', (req, res) => {
-    const { content } = req.body;
+    const { content, model } = req.body;
     if (!content) return res.status(400).send('No content provided');
 
     console.log(`[AI Suggest] Generating suggestions (length: ${content.length})`);
@@ -445,7 +497,8 @@ app.post('/ai-suggest', (req, res) => {
     const systemPrompt = "Eres un asistente creativo y estratega de contenido. Lee el texto que el usuario ha escrito y sugiere 2 o 3 ideas adicionales, ángulos nuevos o párrafos que podrían continuar o enriquecer el post. Mantén el tono y estilo detectado. Sé breve y directo. Devuelve solo las sugerencias en formato markdown, usando viñetas si es necesario.";
 
     const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const command = `echo "${escapedContent}" | ${aichatBin} -S --prompt "${systemPrompt}"`;
+    const aichatModel = model || 'nvidia:meta/llama-3.3-70b-instruct';
+    const command = `echo "${escapedContent}" | ${aichatBin} -S --model ${aichatModel} --prompt "${systemPrompt}"`;
 
     exec(command, { maxBuffer: 1024 * 1024 * 2 }, (error, stdout, stderr) => {
         if (error) {

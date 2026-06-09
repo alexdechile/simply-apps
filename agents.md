@@ -98,4 +98,20 @@ La aplicación ahora cuenta con una capa de inteligencia local ultra-rápida y a
 ### Resultado:
 El usuario ahora puede solicitar ideas y párrafos adicionales a la IA local mientras escribe, facilitando el proceso creativo sin salir del editor.
 
+## [2026-06-06] Fix: aichat usa NVIDIA en Simply, Ollama en CLI
+**Agente:** opencode
+
+### Problema Identificado:
+El botón **🧂 Decorar** (y los otros endpoints que usan `aichat`: Pulir y Sugerir) fallaban intermitentemente porque `aichat` tenía configurado `Ollama:llama3.1:8b` como modelo default, y Ollama en `http://100.79.6.19:11434` respondía de forma inestable.
+
+### Acción Realizada:
+Se modificó `server.js` para que los 3 endpoints que llaman a `aichat` especifiquen explícitamente el modelo NVIDIA mediante `--model NVIDIA:meta/llama-3.3-70b-instruct`:
+- `POST /ai-polish` (línea 419)
+- `POST /ai-decorate` (línea 450)
+- `POST /ai-suggest` (línea 480)
+
+### Resultado:
+- `aichat` desde Simply Apps usa **NVIDIA** como modelo, evitando la inestabilidad de Ollama.
+- `aichat` en la línea de comandos (CLI) **sigue usando Ollama** como default, sin cambios en `~/.config/aichat/config.yaml`.
+
 
