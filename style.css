@@ -582,3 +582,123 @@ body.theme-sketch .output-li {
   background: var(--text-dim);
   border-radius: 3px;
 }
+
+/* Modal de Selección de Nivel de Decoración */
+.custom-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.custom-modal-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.custom-modal-box {
+  background: var(--toolbar-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--pane-radius);
+  padding: 2rem;
+  max-width: 450px;
+  width: 90%;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  transform: translateY(-20px);
+  transition: transform 0.3s ease;
+  color: var(--text-main);
+  text-align: center;
+}
+
+.custom-modal-overlay.active .custom-modal-box {
+  transform: translateY(0);
+}
+
+.custom-modal-title {
+  margin-top: 0;
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.custom-modal-desc {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  margin-bottom: 1.5rem;
+}
+
+.custom-modal-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin-bottom: 1.5rem;
+}
+
+.custom-modal-option-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.8rem 1.2rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-main);
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.custom-modal-option-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--accent);
+  transform: scale(1.02);
+}
+
+.custom-modal-option-btn span.badge {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-dim);
+}
+
+.custom-modal-option-btn.opt-suave:hover {
+  box-shadow: 0 0 10px rgba(110, 142, 251, 0.3);
+}
+.custom-modal-option-btn.opt-medio {
+  border-color: rgba(187, 134, 252, 0.3);
+}
+.custom-modal-option-btn.opt-medio:hover {
+  box-shadow: 0 0 10px rgba(187, 134, 252, 0.4);
+}
+.custom-modal-option-btn.opt-intenso:hover {
+  box-shadow: 0 0 10px rgba(255, 100, 100, 0.3);
+}
+
+.custom-modal-cancel-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-decoration: underline;
+  transition: color 0.2s ease;
+}
+
+.custom-modal-cancel-btn:hover {
+  color: var(--text-main);
+}
+

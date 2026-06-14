@@ -56,6 +56,7 @@ function toBold(str) {
 
 function toItalic(str) {
   return str.replace(/[A-Za-z]/g, c => {
+    if (c === 'h') return 'ℎ';
     if ('A' <= c && c <= 'Z') return String.fromCodePoint(c.charCodeAt(0) + 0x1d434 - 0x41);
     if ('a' <= c && c <= 'z') return String.fromCodePoint(c.charCodeAt(0) + 0x1d44e - 0x61);
     return c;

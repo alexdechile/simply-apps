@@ -1,7 +1,7 @@
 const express = require('express');
-require('dotenv').config();
-const fs = require('fs');
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+const fs = require('fs');
 const app = express();
 const port = 1717;
 
@@ -14,7 +14,7 @@ server.keepAliveTimeout = 125000;
 app.use(express.json());
 app.use(express.static(__dirname));
 
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const yaml = require('js-yaml');
 
 // Configuración de IA (DeepInfra) desde variable de entorno
@@ -457,22 +457,46 @@ app.post('/ai-polish', (req, res) => {
 });
 
 app.post('/ai-decorate', (req, res) => {
-    const { content, model } = req.body;
+    const { content, model, level } = req.body;
     if (!content) return res.status(400).send('No content provided');
 
-    console.log(`[AI Decorate] Adding salt and pepper (length: ${content.length})`);
+    console.log(`[AI Decorate] Adding salt and pepper (length: ${content.length}), level: ${level}`);
 
-    const escapedContent = content.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+    let levelPrompt = "";
+    if (level === 1 || level === '1') {
+        levelPrompt = "NIVEL DE DECORACIÓN: SUAVE. Añade emojis de manera muy sutil (máximo 1 o 2 en todo el texto) y solo unas pocas negritas estratégicas. El texto debe verse formal, profesional y limpio, sin saturación visual.";
+    } else if (level === 3 || level === '3') {
+        levelPrompt = "NIVEL DE DECORACIÓN: INTENSO (Sal y Pimienta total). Añade emojis abundantes e ilustrativos para casi cada idea/párrafo, negritas estratégicas, listas si aplica y algún separador sutil si es necesario. Debe ser altamente llamativo y dinámico, ideal para captar la atención en redes sociales.";
+    } else {
+        // Por defecto / Nivel 2 (Medio)
+        levelPrompt = "NIVEL DE DECORACIÓN: MEDIO. Añade emojis relevantes (moderados, sin saturar) y negritas estratégicas para destacar las ideas clave del texto. Debe ser amigable y estructurado de forma atractiva pero equilibrada.";
+    }
 
-    const systemPrompt = "Actúa como un experto en estilismo de redes sociales. Tu misión es añadir 'sal y pimienta' al texto: inserta emojis relevantes, negritas estratégicas y algún separador o elemento decorativo sutil si es necesario. IMPORTANTE: NO cambies el significado, ni la estructura, ni el mensaje del texto original. Solo añade la capa visual y decorativa. Devuelve ÚNICAMENTE el texto decorado.";
+    const systemPrompt = `Actúa como un experto en estilismo de redes sociales. Tu misión es añadir 'sal y pimienta' (estilo y decoración visual) al texto proporcionado.
+${levelPrompt}
+
+IMPORTANTE: NO cambies el significado, ni la estructura base, ni el mensaje del texto original. Solo añade la capa visual y decorativa (emojis, negritas, etc.). Devuelve ÚNICAMENTE el texto decorado, sin ningún comentario, preámbulo ni bloque de código markdown.`;
 
     const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
     const aichatModel = model || 'nvidia:meta/llama-3.3-70b-instruct';
-    const command = `echo "${escapedContent}" | ${aichatBin} -S --model ${aichatModel} --prompt "${systemPrompt}"`;
 
-    exec(command, { maxBuffer: 1024 * 1024 * 2 }, (error, stdout, stderr) => {
-        if (error) {
-            console.error(`[AI Decorate] Error: ${error}`);
+    // Ejecución segura usando spawn para evitar errores de escape de bash
+    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt]);
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => {
+        stdout += data.toString();
+    });
+
+    child.stderr.on('data', (data) => {
+        stderr += data.toString();
+    });
+
+    child.on('close', (code) => {
+        if (code !== 0) {
+            console.error(`[AI Decorate] Error code ${code}: ${stderr}`);
             return res.status(500).send(stderr || 'Error al decorar el texto con aichat');
         }
 
@@ -484,6 +508,10 @@ app.post('/ai-decorate', (req, res) => {
         console.log(`[AI Decorate] Success: Text decorated`);
         res.send({ content: decoratedText });
     });
+
+    // Escribir el contenido en stdin del proceso aichat
+    child.stdin.write(content);
+    child.stdin.end();
 });
 
 app.post('/ai-suggest', (req, res) => {

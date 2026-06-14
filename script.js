@@ -500,11 +500,74 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
     };
   }
 
+  // --- DYNAMIC MODAL PARA SELECCIÓN DE NIVEL DE DECORACIÓN ---
+  function showDecorateModal() {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'custom-modal-overlay';
+      
+      overlay.innerHTML = `
+        <div class="custom-modal-box">
+          <div class="custom-modal-title">🧂 Estilo y Decoración</div>
+          <div class="custom-modal-desc">¿Qué nivel de sal y pimienta quieres añadir al texto?</div>
+          <div class="custom-modal-options">
+            <button class="custom-modal-option-btn opt-suave" data-level="1">
+              <span>Suave 🧂</span>
+              <span class="badge">Nivel 1</span>
+            </button>
+            <button class="custom-modal-option-btn opt-medio" data-level="2">
+              <span>Equilibrado 🌶️</span>
+              <span class="badge">Nivel 2</span>
+            </button>
+            <button class="custom-modal-option-btn opt-intenso" data-level="3">
+              <span>Intenso 🔥</span>
+              <span class="badge">Nivel 3</span>
+            </button>
+          </div>
+          <button class="custom-modal-cancel-btn">Cancelar</button>
+        </div>
+      `;
+      
+      document.body.appendChild(overlay);
+      
+      // Activar animación
+      setTimeout(() => overlay.classList.add('active'), 10);
+      
+      const cleanUp = () => {
+        overlay.classList.remove('active');
+        setTimeout(() => overlay.remove(), 300);
+      };
+      
+      overlay.querySelectorAll('.custom-modal-option-btn').forEach(btn => {
+        btn.onclick = () => {
+          const level = btn.getAttribute('data-level');
+          cleanUp();
+          resolve(level);
+        };
+      });
+      
+      overlay.querySelector('.custom-modal-cancel-btn').onclick = () => {
+        cleanUp();
+        resolve(null);
+      };
+      
+      overlay.onclick = (e) => {
+        if (e.target === overlay) {
+          cleanUp();
+          resolve(null);
+        }
+      };
+    });
+  }
+
   // --- DECORAR TEXTO CON aichat ---
   if (el.decorar) {
     el.decorar.onclick = async () => {
       const content = easyMDE.value();
       if (!content.trim()) return;
+
+      const level = await showDecorateModal();
+      if (!level) return; // Cancelado
 
       const originalText = el.decorar.textContent;
       el.decorar.textContent = '🧂 Decorando...';
@@ -514,7 +577,7 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
         const response = await fetch('ai-decorate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content, model: getSelectedModel() })
+          body: JSON.stringify({ content, model: getSelectedModel(), level })
         });
 
         if (!response.ok) {
@@ -1256,6 +1319,7 @@ Genera un reporte "Simply Style" con esta estructura:
 
   function toItalic(str) {
     return str.replace(/[A-Za-z]/g, c => {
+      if (c === 'h') return 'ℎ';
       if ('A' <= c && c <= 'Z') return String.fromCodePoint(c.charCodeAt(0) + 0x1d434 - 0x41);
       if ('a' <= c && c <= 'z') return String.fromCodePoint(c.charCodeAt(0) + 0x1d44e - 0x61);
       return c;
