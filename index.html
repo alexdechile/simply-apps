@@ -102,6 +102,7 @@
             <button id="tabFB" class="tab-btn active" data-target="output-fb-container">🚀 FB</button>
             <button id="tabX" class="tab-btn" data-target="output-x-container">🐦 X</button>
             <button id="tabLI" class="tab-btn" data-target="output-li-container">💼 LI</button>
+            <button id="tabFuentes" class="tab-btn" data-target="fuentes-container">📚 Fuentes</button>
             <button id="tabConfig" class="tab-btn" data-target="config-container">⚙️ Config</button>
           </div>
 
@@ -131,6 +132,46 @@
                 <button class="action-btn-sm ai-btn" id="genLIBtn">✨ Generar LI</button>
                 <button class="copy-btn-sm" id="copyLIBtn">📋 Copiar LI</button>
               </div>
+            </div>
+          </div>
+
+          <!-- Pestaña de Fuentes fiables -->
+          <div id="fuentes-container" class="tab-content flex-grow-1 p-3 overflow-y-auto" style="height: 550px;">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h5 class="m-0 text-white">📚 Fuentes de Investigación</h5>
+              <span class="badge bg-success" id="sourcesCountBadge">Detectando dominios...</span>
+            </div>
+            
+            <p class="small text-secondary mb-3">
+              Define los dominios confiables (Nivel 1-2) para ordenar y priorizar al realizar búsquedas en profundidad con Scrapling.
+            </p>
+
+            <div class="mb-3">
+              <label class="form-label small fw-bold text-dim">Contenido de fuentes.md (Markdown)</label>
+              <textarea id="fuentesMarkdown" class="form-control form-control-sm bg-dark text-white border-secondary" rows="18" style="font-family: var(--font-mono); font-size: 0.85rem;"></textarea>
+            </div>
+
+            <!-- Panel de Soporte IA -->
+            <div class="border border-secondary rounded p-3 mb-3 bg-black-20">
+              <div class="d-flex align-items-center gap-2 mb-2">
+                <span class="fs-5">🤖</span>
+                <span class="small fw-bold text-white">Asistente IA para Fuentes (aichat)</span>
+              </div>
+              <p class="small text-secondary mb-2">
+                Pídele al asistente sugerencias, formatos de tablas o validación de fuentes de algún área para agregarlas a la lista.
+              </p>
+              
+              <div class="input-group input-group-sm mb-3">
+                <input type="text" id="aiSourcesPrompt" class="form-control bg-dark text-white border-secondary" placeholder="Ej: Sugiere 5 fuentes de economía en Chile con su descripción en formato tabla...">
+                <button class="btn btn-primary" type="button" id="aiSourcesBtn">💡 Preguntar</button>
+              </div>
+
+              <div id="aiSourcesOutput" class="p-2 border border-secondary bg-dark-50 rounded text-white small d-none" style="white-space: pre-wrap; max-height: 250px; overflow-y: auto; font-family: var(--font-mono);"></div>
+            </div>
+
+            <div class="d-flex gap-2 mb-3">
+              <button id="saveFuentesBtn" class="btn btn-sm btn-success w-100">💾 Guardar Fuentes</button>
+              <button id="reloadFuentesBtn" class="btn btn-sm btn-outline-secondary w-100">🔄 Recargar</button>
             </div>
           </div>
 
@@ -240,6 +281,7 @@
     <button class="menu-btn" data-style="squared" title="En Cuadros">🄰</button>
     <button class="menu-btn" data-style="fullwidth" title="Ancho Completo">Ｗ</button>
     <button class="menu-btn" data-style="upper" title="Mayúsculas">A</button>
+    <button class="menu-btn" data-style="boldupper" title="Mayúsculas + Negrita">𝐀+</button>
   </div>
 
   <emoji-picker style="display: none; position: absolute; z-index: 10000;"></emoji-picker>

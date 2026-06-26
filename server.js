@@ -83,6 +83,37 @@ app.post('/save-to-vault', (req, res) => {
     });
 });
 
+// Endpoint para obtener el contenido de fuentes.md
+app.get('/api/fuentes', (req, res) => {
+    const fuentesPath = path.join(__dirname, 'archivos', 'fuentes.md');
+    try {
+        if (!fs.existsSync(fuentesPath)) {
+            return res.status(404).send('Archivo fuentes.md no encontrado.');
+        }
+        const content = fs.readFileSync(fuentesPath, 'utf8');
+        res.send({ content });
+    } catch (e) {
+        console.error('[Fuentes] Error al leer:', e.message);
+        res.status(500).send('Error al leer fuentes.md');
+    }
+});
+
+// Endpoint para guardar el contenido de fuentes.md
+app.post('/api/fuentes', (req, res) => {
+    const { content } = req.body;
+    if (content === undefined) return res.status(400).send('No content provided');
+
+    const fuentesPath = path.join(__dirname, 'archivos', 'fuentes.md');
+    try {
+        fs.writeFileSync(fuentesPath, content, 'utf8');
+        console.log('[Fuentes] fuentes.md guardado correctamente');
+        res.send({ message: 'Saved successfully' });
+    } catch (e) {
+        console.error('[Fuentes] Error al guardar:', e.message);
+        res.status(500).send('Error al guardar fuentes.md');
+    }
+});
+
 app.post('/research', (req, res) => {
     const { topic, depth } = req.body;
     if (!topic) return res.status(400).send('No topic provided');
@@ -192,13 +223,19 @@ YouTube Music: ${rawData.youtube_music || ''}`;
                         { role: "user", content: userContent }
                     ],
                     temperature: 0.7,
-                    max_tokens: 4096
+                    max_tokens: 8192
                 })
             });
 
             const data = await aiResponse.json();
             if (!aiResponse.ok) {
                 return res.status(500).send(data.error ? data.error.message : 'Error de IA');
+            }
+
+            // Verificar si la respuesta se truncó por límite de tokens
+            const finishReason = data.choices?.[0]?.finish_reason;
+            if (finishReason === 'length') {
+                console.warn(`[Cancion] Respuesta truncada por max_tokens para: ${query}`);
             }
 
             const post = data.choices[0].message.content.trim();

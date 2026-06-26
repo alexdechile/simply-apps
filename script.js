@@ -233,7 +233,13 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
       tabBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       tabContents.forEach(content => content.classList.toggle('active', content.id === targetId));
-      state.activeChannel = targetId.split('-')[1] || 'fb';
+      
+      if (targetId === 'fuentes-container') {
+        state.activeChannel = 'fuentes';
+        cargarFuentes();
+      } else {
+        state.activeChannel = targetId.split('-')[1] || 'fb';
+      }
       actualizarVistas(); // Refrescar contenido al cambiar
     };
   });
@@ -341,14 +347,18 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
       let left = cursor.left + (cursor.right - cursor.left) / 2 - menuWidth / 2;
       let top = cursor.top - menuHeight - 15;
       
-      // Ajuste para posición fixed (coordenadas de ventana)
+      // Ajuste horizontal: no salirse por los lados
       if (left < 10) left = 10;
       if (left + menuWidth > window.innerWidth - 10) left = window.innerWidth - menuWidth - 10;
-      if (top < 10) top = cursor.bottom + 15;
+      
+      // Ajuste vertical: si no cabe arriba, ponerlo debajo de la selección
+      if (top < 10) top = cursor.bottom + 10;
+      // Si tampoco cabe abajo, forzar al borde inferior visible
+      if (top + menuHeight > window.innerHeight - 10) top = window.innerHeight - menuHeight - 10;
       
       menu.style.left = left + 'px';
       menu.style.top = top + 'px';
-      menu.style.transform = 'none'; // Eliminar transform para evitar desvíos en fixed
+      menu.style.transform = 'none';
     } else {
       menu.classList.remove('visible');
     }
@@ -1134,22 +1144,8 @@ Genera un reporte "Simply Style" con esta estructura:
     };
   }
 
-  // Barra de formato aparece al seleccionar texto en el editor
-  if (el.formatMenu && easyMDE) {
-    const cm = easyMDE.codemirror;
-    cm.on('cursorActivity', () => {
-      const selection = cm.getSelection();
-      if (selection) {
-        const coords = cm.cursorCoords(true, 'page');
-        const menu = el.formatMenu;
-        menu.style.left = Math.max(10, coords.left - 20) + 'px';
-        menu.style.top = (coords.bottom + 8) + 'px';
-        menu.classList.add('visible');
-      } else {
-        el.formatMenu.classList.remove('visible');
-      }
-    });
-
+  // Click fuera del menú de formato lo cierra
+  if (el.formatMenu) {
     document.addEventListener('click', (e) => {
       if (!el.formatMenu.contains(e.target)) {
         el.formatMenu.classList.remove('visible');
@@ -1178,6 +1174,7 @@ Genera un reporte "Simply Style" con esta estructura:
         case 'squared': wrapped = `{sq}${selection}{/sq}`; break;
         case 'fullwidth': wrapped = `{fw}${selection}{/fw}`; break;
         case 'upper': wrapped = selection.toUpperCase(); break;
+        case 'boldupper': wrapped = `**${selection.toUpperCase()}**`; break;
         default: wrapped = selection;
       }
       
@@ -1306,15 +1303,37 @@ Genera un reporte "Simply Style" con esta estructura:
     'h': '𝐡'
   };
 
+  // Mapa de vocales acentuadas -> base sin acento + combinador diacrítico
+  const accentedMap = {
+    'á': ['a', '\u0301'], 'é': ['e', '\u0301'], 'í': ['i', '\u0301'], 'ó': ['o', '\u0301'], 'ú': ['u', '\u0301'],
+    'Á': ['A', '\u0301'], 'É': ['E', '\u0301'], 'Í': ['I', '\u0301'], 'Ó': ['O', '\u0301'], 'Ú': ['U', '\u0301'],
+    'ü': ['u', '\u0308'], 'Ü': ['U', '\u0308'],
+    'ñ': ['n', '\u0303'], 'Ñ': ['N', '\u0303']
+  };
+
   // --- FUNCIONES DE UTILIDAD (UNICODE & CLIPBOARD) ---
   function toBold(str) {
-    return str.replace(/[A-Za-z0-9]/g, c => {
-      if (boldExceptions[c]) return boldExceptions[c];
-      if ('A' <= c && c <= 'Z') return String.fromCodePoint(c.charCodeAt(0) + 0x1d400 - 0x41);
-      if ('a' <= c && c <= 'z') return String.fromCodePoint(c.charCodeAt(0) + 0x1d41a - 0x61);
-      if ('0' <= c && c <= '9') return String.fromCodePoint(c.charCodeAt(0) + 0x1d7ce - 0x30);
-      return c;
-    });
+    let result = '';
+    for (const c of str) {
+      if (boldExceptions[c]) {
+        result += boldExceptions[c];
+      } else if (accentedMap[c]) {
+        const [base, combiner] = accentedMap[c];
+        // Convertir la letra base a bold y luego agregar el combinador
+        if ('A' <= base && base <= 'Z') result += String.fromCodePoint(base.charCodeAt(0) + 0x1d400 - 0x41) + combiner;
+        else if ('a' <= base && base <= 'z') result += String.fromCodePoint(base.charCodeAt(0) + 0x1d41a - 0x61) + combiner;
+        else result += c;
+      } else if ('A' <= c && c <= 'Z') {
+        result += String.fromCodePoint(c.charCodeAt(0) + 0x1d400 - 0x41);
+      } else if ('a' <= c && c <= 'z') {
+        result += String.fromCodePoint(c.charCodeAt(0) + 0x1d41a - 0x61);
+      } else if ('0' <= c && c <= '9') {
+        result += String.fromCodePoint(c.charCodeAt(0) + 0x1d7ce - 0x30);
+      } else {
+        result += c;
+      }
+    }
+    return result;
   }
 
   function toItalic(str) {
@@ -1416,6 +1435,115 @@ Genera un reporte "Simply Style" con esta estructura:
     localStorage.setItem('simply-theme', document.body.classList.contains('theme-sketch') ? 'sketch' : 'dark'); 
   };
   if (localStorage.getItem('simply-theme') === 'sketch') document.body.classList.add('theme-sketch');
+
+  // --- LÓGICA DE FUENTES FIABLES ---
+  const fuentesMarkdown = document.getElementById('fuentesMarkdown');
+  const sourcesCountBadge = document.getElementById('sourcesCountBadge');
+  const saveFuentesBtn = document.getElementById('saveFuentesBtn');
+  const reloadFuentesBtn = document.getElementById('reloadFuentesBtn');
+  const aiSourcesPrompt = document.getElementById('aiSourcesPrompt');
+  const aiSourcesBtn = document.getElementById('aiSourcesBtn');
+  const aiSourcesOutput = document.getElementById('aiSourcesOutput');
+
+  function actualizarContadorFuentes(markdownText) {
+    if (!markdownText) {
+      sourcesCountBadge.textContent = '0 dominios';
+      return;
+    }
+    const regex = /\[.*?\]\((https?:\/\/.*?)\)/g;
+    const domains = new Set();
+    let match;
+    while ((match = regex.exec(markdownText)) !== null) {
+      try {
+        const url = new URL(match[1]);
+        let domain = url.hostname.toLowerCase();
+        if (domain.startsWith('www.')) domain = domain.substring(4);
+        if (domain && !['reddit.com', 'wikipedia.org', 'youtube.com', 'quora.com'].some(x => domain.includes(x))) {
+          domains.add(domain);
+        }
+      } catch (e) {
+        // Enlace inválido
+      }
+    }
+    sourcesCountBadge.textContent = `${domains.size} dominios serios`;
+  }
+
+  async function cargarFuentes() {
+    try {
+      sourcesCountBadge.textContent = 'Cargando...';
+      const res = await fetch('api/fuentes');
+      if (!res.ok) throw new Error('No se pudo cargar fuentes.md');
+      const data = await res.json();
+      fuentesMarkdown.value = data.content;
+      actualizarContadorFuentes(data.content);
+    } catch (err) {
+      alert('Error al cargar fuentes: ' + err.message);
+      sourcesCountBadge.textContent = 'Error';
+    }
+  }
+
+  async function guardarFuentes() {
+    const content = fuentesMarkdown.value;
+    saveFuentesBtn.disabled = true;
+    const originalText = saveFuentesBtn.textContent;
+    saveFuentesBtn.textContent = '💾 Guardando...';
+
+    try {
+      const res = await fetch('api/fuentes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content })
+      });
+      if (!res.ok) throw new Error('Error al guardar en el servidor');
+      actualizarContadorFuentes(content);
+      alert('¡Fuentes guardadas correctamente!');
+    } catch (err) {
+      alert('Error al guardar fuentes: ' + err.message);
+    } finally {
+      saveFuentesBtn.disabled = false;
+      saveFuentesBtn.textContent = originalText;
+    }
+  }
+
+  if (fuentesMarkdown) {
+    fuentesMarkdown.oninput = () => {
+      actualizarContadorFuentes(fuentesMarkdown.value);
+    };
+  }
+
+  if (saveFuentesBtn) saveFuentesBtn.onclick = guardarFuentes;
+  if (reloadFuentesBtn) reloadFuentesBtn.onclick = cargarFuentes;
+
+  if (aiSourcesBtn) {
+    aiSourcesBtn.onclick = async () => {
+      const promptText = aiSourcesPrompt.value.trim();
+      if (!promptText) return;
+
+      aiSourcesBtn.disabled = true;
+      const originalBtnText = aiSourcesBtn.textContent;
+      aiSourcesBtn.textContent = '🧠 Pensando...';
+      aiSourcesOutput.classList.remove('d-none');
+      aiSourcesOutput.textContent = 'Consultando al asistente de fuentes en DeepInfra...';
+
+      try {
+        const systemPrompt = `Eres donalex:1717, un analista de datos, curador de fuentes de información y estudioso constante de la realidad.
+Tu trabajo es responder con precisión y ayudar al usuario a encontrar, validar, refinar o dar formato de tabla Markdown a fuentes serias de internet (idealmente de nivel 1 o 2, como PubMed, revistas científicas, organismos internacionales, bases de datos o portales estatales) para incorporarlas al pool de fuentes.
+
+Instrucciones:
+1. Recomienda fuentes confiables con sus URLs reales y válidas.
+2. Da el formato adecuado (Markdown de tabla o lista como el que se usa en fuentes.md).
+3. Sé breve y estructurado.`;
+        
+        const responseText = await callAI(systemPrompt, promptText);
+        aiSourcesOutput.textContent = responseText;
+      } catch (err) {
+        aiSourcesOutput.textContent = 'Error al consultar IA: ' + err.message;
+      } finally {
+        aiSourcesBtn.disabled = false;
+        aiSourcesBtn.textContent = originalBtnText;
+      }
+    };
+  }
 
   loadPrompts();
   actualizarVistas();

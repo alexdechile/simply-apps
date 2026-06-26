@@ -14,7 +14,8 @@ def main():
     print(f"Iniciando investigación {depth} para: {query}", file=sys.stderr)
 
     max_links = 5 if depth == "profunda" else 3
-    links = search_ddg(query, max_links=max_links)
+    prioritize = (depth == "profunda")
+    links = search_ddg(query, max_links=max_links, prioritize=prioritize)
 
     if not links:
         print(

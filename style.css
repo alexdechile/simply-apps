@@ -457,9 +457,37 @@ body.theme-sketch .output-li {
   border-color: #3e4042;
 }
 
+.tab-btn[data-target="output-fb-container"].active {
+  color: #1877f2; /* Azul Facebook */
+  border-bottom-color: #1877f2;
+}
+
+.tab-btn[data-target="output-x-container"].active {
+  color: var(--text-main);
+  border-bottom-color: var(--text-main);
+}
+
 .tab-btn[data-target="output-li-container"].active {
   color: #0a66c2; /* Azul LinkedIn */
   border-bottom-color: #0a66c2;
+}
+
+.tab-btn[data-target="fuentes-container"].active {
+  color: #00bfa5; /* Verde/Teal para fuentes */
+  border-bottom-color: #00bfa5;
+}
+
+.tab-btn[data-target="config-container"].active {
+  color: #ff9800; /* Naranja para config */
+  border-bottom-color: #ff9800;
+}
+
+.bg-black-20 {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.bg-dark-50 {
+  background: rgba(20, 20, 20, 0.5);
 }
 
 .tab-content {

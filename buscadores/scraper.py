@@ -12,7 +12,7 @@ def get_fuentes_path():
     )
 
 
-def get_prioritized_domains(max_domains=15):
+def get_prioritized_domains(max_domains=100):
     domains = []
     path = get_fuentes_path()
     if not os.path.exists(path):
@@ -24,23 +24,31 @@ def get_prioritized_domains(max_domains=15):
         for url in matches:
             parsed = urllib.parse.urlparse(url)
             domain = parsed.netloc
-            if domain and domain not in domains:
-                if not any(
-                    x in domain
-                    for x in ["reddit.com", "wikipedia.org", "youtube.com", "quora.com"]
-                ):
-                    domains.append(domain)
+            if domain:
+                clean_domain = domain.lower()
+                if clean_domain.startswith("www."):
+                    clean_domain = clean_domain[4:]
+                if clean_domain and clean_domain not in domains:
+                    if not any(
+                        x in clean_domain
+                        for x in ["reddit.com", "wikipedia.org", "youtube.com", "quora.com"]
+                    ):
+                        domains.append(clean_domain)
     except Exception as e:
         print(f"Error parseando fuentes.md: {e}", file=sys.stderr)
     return domains[:max_domains]
 
 
-def search_ddg(query, max_links=3, skip_ads=True):
+def search_ddg(query, max_links=3, skip_ads=True, prioritize=False):
     url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
     try:
         page = Fetcher.get(url)
         results = page.css(".result__a")
-        links = []
+        raw_links = []
+        
+        # Si priorizamos, buscamos hasta 15 enlaces para poder filtrar mejor
+        limit = 15 if prioritize else max_links
+        
         for res in results:
             title = res.text.strip()
             href = res.attrib.get("href")
@@ -52,11 +60,42 @@ def search_ddg(query, max_links=3, skip_ads=True):
                 href = "https:" + href
             if skip_ads and ("y.js" in href or "aclick" in href or "ad_domain" in href):
                 continue
-            links.append({"title": title, "url": href})
-            if len(links) >= max_links:
+            raw_links.append({"title": title, "url": href})
+            if len(raw_links) >= limit:
                 break
-        return links
-    except Exception:
+                
+        if prioritize:
+            p_domains = get_prioritized_domains(max_domains=150)
+            matched = []
+            others = []
+            for link in raw_links:
+                parsed = urllib.parse.urlparse(link["url"])
+                domain = (parsed.netloc or "").lower()
+                if domain.startswith("www."):
+                    domain = domain[4:]
+                    
+                is_prioritized = False
+                for p_dom in p_domains:
+                    if domain == p_dom or domain.endswith('.' + p_dom) or p_dom.endswith('.' + domain):
+                        is_prioritized = True
+                        break
+                
+                if is_prioritized:
+                    matched.append(link)
+                else:
+                    others.append(link)
+            
+            if matched:
+                print(f"Prioritizing {len(matched)} reliable sources!", file=sys.stderr)
+                for m in matched:
+                    print(f" -> {m['url']}", file=sys.stderr)
+                    
+            combined = matched + others
+            return combined[:max_links]
+        else:
+            return raw_links[:max_links]
+    except Exception as e:
+        print(f"Error in search_ddg: {e}", file=sys.stderr)
         return []
 
 
