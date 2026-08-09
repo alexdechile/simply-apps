@@ -312,6 +312,157 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
 
   easyMDE.codemirror.on('change', actualizarVistas);
 
+  // --- BUSCAR Y REEMPLAZAR (Ctrl+F) ---
+  const findbar = document.getElementById('findbar');
+  const findInput = document.getElementById('findInput');
+  const replaceInput = document.getElementById('replaceInput');
+  const findCount = document.getElementById('findCount');
+  const findCaseBtn = document.getElementById('findCaseBtn');
+  const cm = easyMDE.codemirror;
+
+  let findMarks = [];
+  let findCurrent = -1;
+  let searchedQuery = '';
+
+  function escaparRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function casoInsensible() {
+    return !findCaseBtn.classList.contains('active');
+  }
+
+  function limpiarMarcas() {
+    findMarks.forEach(m => m.clear());
+    findMarks = [];
+    findCurrent = -1;
+    if (findCount) findCount.textContent = '0/0';
+  }
+
+  function ejecutarBusqueda() {
+    searchedQuery = findInput.value;
+    const query = searchedQuery;
+    if (!query) { limpiarMarcas(); return; }
+    limpiarMarcas();
+    const flags = 'g' + (casoInsensible() ? 'i' : '');
+    const regex = new RegExp(escaparRegex(query), flags);
+    const cursor = cm.getSearchCursor(regex, { line: 0, ch: 0 });
+    while (cursor.findNext()) {
+      findMarks.push(cm.markText(cursor.from(), cursor.to(), { className: 'find-match' }));
+    }
+    if (findMarks.length) {
+      findCount.textContent = `1/${findMarks.length}`;
+      seleccionarMatch(0);
+    } else {
+      findCount.textContent = '0/0';
+    }
+  }
+
+  function seleccionarMatch(index) {
+    if (!findMarks.length) return;
+    if (index < 0) index = findMarks.length - 1;
+    if (index >= findMarks.length) index = 0;
+    findCurrent = index;
+    const pos = findMarks[index].find();
+    cm.setSelection(pos.from, pos.to);
+    cm.scrollIntoView({ from: pos.from, to: pos.to }, 60);
+    findCount.textContent = `${index + 1}/${findMarks.length}`;
+    findInput.focus();
+  }
+
+  function siguienteMatch() { if (findMarks.length) seleccionarMatch(findCurrent + 1); }
+  function anteriorMatch() { if (findMarks.length) seleccionarMatch(findCurrent - 1); }
+
+  function buscarONavegar(dir) {
+    const query = findInput.value;
+    if (!query) { limpiarMarcas(); return; }
+    if (query !== searchedQuery) {
+      ejecutarBusqueda();
+      if (dir < 0 && findMarks.length) seleccionarMatch(findMarks.length - 1);
+      return;
+    }
+    if (dir > 0) siguienteMatch(); else anteriorMatch();
+  }
+
+  function reemplazarActual() {
+    if (findCurrent < 0 || !findMarks.length) return;
+    const replacement = replaceInput.value;
+    const idx = findCurrent;
+    const pos = findMarks[idx].find();
+    cm.replaceRange(replacement, pos.from, pos.to);
+    ejecutarBusqueda();
+    if (findMarks.length) seleccionarMatch(Math.min(idx, findMarks.length - 1));
+    findInput.focus();
+  }
+
+  function reemplazarTodo() {
+    const query = findInput.value;
+    const replacement = replaceInput.value;
+    if (!query) return;
+    const flags = 'g' + (casoInsensible() ? 'i' : '');
+    const regex = new RegExp(escaparRegex(query), flags);
+    const ranges = [];
+    const cursor = cm.getSearchCursor(regex, { line: 0, ch: 0 });
+    while (cursor.findNext()) ranges.push([cursor.from(), cursor.to()]);
+    if (!ranges.length) return;
+    cm.operation(() => {
+      for (let i = ranges.length - 1; i >= 0; i--) {
+        cm.replaceRange(replacement, ranges[i][0], ranges[i][1]);
+      }
+    });
+    ejecutarBusqueda();
+    findInput.focus();
+  }
+
+  function abrirBusqueda() {
+    if (findbar) {
+      findbar.hidden = false;
+      findInput.value = '';
+      findInput.focus();
+      findInput.select();
+    }
+  }
+
+  function cerrarBusqueda() {
+    limpiarMarcas();
+    if (findbar) findbar.hidden = true;
+    cm.focus();
+  }
+
+  const findBtn = document.getElementById('findBtn');
+  if (findBtn) findBtn.addEventListener('click', abrirBusqueda);
+  document.getElementById('findCloseBtn').addEventListener('click', cerrarBusqueda);
+
+  findCaseBtn.addEventListener('click', () => {
+    findCaseBtn.classList.toggle('active');
+    ejecutarBusqueda();
+  });
+  findInput.addEventListener('input', () => {
+    if (findInput.value !== searchedQuery) limpiarMarcas();
+  });
+  findInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); buscarONavegar(e.shiftKey ? -1 : 1); }
+    if (e.key === 'Escape') cerrarBusqueda();
+  });
+  replaceInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); reemplazarActual(); }
+    if (e.key === 'Escape') cerrarBusqueda();
+  });
+  document.getElementById('findNextBtn').addEventListener('click', () => buscarONavegar(1));
+  document.getElementById('findPrevBtn').addEventListener('click', () => buscarONavegar(-1));
+  document.getElementById('replaceBtn').addEventListener('click', reemplazarActual);
+  document.getElementById('replaceAllBtn').addEventListener('click', reemplazarTodo);
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+      e.preventDefault();
+      abrirBusqueda();
+    } else if (e.key === 'F3' && findbar && !findbar.hidden) {
+      e.preventDefault();
+      buscarONavegar(e.shiftKey ? -1 : 1);
+    }
+  });
+
   // --- SINCRONIZACIÓN Y UI ---
   let isSyncingEditor = false;
   let isSyncingOutput = false;
@@ -1130,7 +1281,38 @@ Genera un reporte "Simply Style" con esta estructura:
     };
   }
 
+  function setupCopyPlainTextButton(btnId) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    
+    btn.onclick = () => {
+      const md = easyMDE.value();
+      if (!md) return;
+      
+      let text = md;
+      // Remover formato markdown estándar
+      text = text.replace(/(\*\*\*|___)(.*?)\1/g, '$2');
+      text = text.replace(/(\*\*|__)(.*?)\1/g, '$2');
+      text = text.replace(/(\*|_)(.*?)\1/g, '$2');
+      
+      // Remover etiquetas especiales de unicode
+      text = text.replace(/\{s\}(.*?)\{\/s\}/g, '$1');
+      text = text.replace(/\{f\}(.*?)\{\/f\}/g, '$1');
+      text = text.replace(/\{d\}(.*?)\{\/d\}/g, '$1');
+      text = text.replace(/\{sb\}(.*?)\{\/sb\}/g, '$1');
+      text = text.replace(/\{c\}(.*?)\{\/c\}/g, '$1');
+      text = text.replace(/\{sq\}(.*?)\{\/sq\}/g, '$1');
+      text = text.replace(/\{fw\}(.*?)\{\/fw\}/g, '$1');
+      
+      // Remover tachado
+      text = text.replace(/~~(.*?)~~/g, '$1');
+      
+      copyToClipboard(text, btn);
+    };
+  }
+
   setupCopyButton('copyBtn', el.outFB);
+  setupCopyPlainTextButton('copyPlainTextBtn');
   setupCopyButton('copyXBtn', el.outX);
   setupCopyButton('copyLIBtn', el.outLI);
 

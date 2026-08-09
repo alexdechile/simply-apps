@@ -1,5 +1,8 @@
 # Bitácora de Alex - Simply Apps
 
+## Último Realizado [2026-08-09]
+- **Botón Copiar Texto Plano en FB:** Se agregó un nuevo botón "📄 Texto Plano" en la pestaña de Facebook. Este botón limpia el contenido del editor eliminando la sintaxis Markdown básica y las etiquetas especiales de estilo Unicode (`{s}`, `{f}`, etc.), permitiendo copiar el borrador sin formato a través de la API del portapapeles.
+
 ## Último Realizado [2026-06-14]
 - **Corrección de letra h en Cursiva Matemática:** Se solucionó un bug en la conversión Unicode a cursiva matemática donde la letra 'h' minúscula era omitida. Se añadió una excepción para mapearla correctamente al símbolo de constante de Planck (`ℎ`, U+210E), resolviendo la desaparición del carácter en palabras como "choca" o "Anthropic".
 - **Rama 'casa':** Se creó y activó la rama `casa` para la versión homelab de Simply Apps.

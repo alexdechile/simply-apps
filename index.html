@@ -63,6 +63,7 @@
 
         <!-- Utilidades de texto -->
         <div class="btn-pill-group">
+          <button id="findBtn"           class="action-btn" title="Buscar y reemplazar (Ctrl+F)">🔎</button>
           <button id="emojiBtn"          class="action-btn" title="Insertar Emoji">😊</button>
           <button id="limpiarGatosBtn"   class="action-btn" title="Quitar solo los #">Limpiar #</button>
           <button id="borrarComentariosBtn" class="action-btn" title="Borrar líneas #">Borrar #</button>
@@ -104,6 +105,23 @@
           </div>
           <div class="editor-inner">
             <textarea id="editor"></textarea>
+
+            <!-- Buscar y reemplazar -->
+            <div id="findbar" class="find-bar" hidden>
+              <div class="find-bar-row">
+                <input id="findInput" class="find-input" type="text" placeholder="Buscar..." autocomplete="off" spellcheck="false">
+                <span id="findCount" class="find-count">0/0</span>
+                <button class="find-btn" id="findPrevBtn" title="Anterior (Shift+Enter)">⬆</button>
+                <button class="find-btn" id="findNextBtn" title="Siguiente (Enter)">⬇</button>
+                <button class="find-btn find-case" id="findCaseBtn" title="Coincidir mayúsculas/minúsculas">Aa</button>
+                <button class="find-btn find-close" id="findCloseBtn" title="Cerrar (Esc)">✕</button>
+              </div>
+              <div class="find-bar-row">
+                <input id="replaceInput" class="find-input" type="text" placeholder="Reemplazar con..." autocomplete="off" spellcheck="false">
+                <button class="find-btn find-action" id="replaceBtn">Reemplazar</button>
+                <button class="find-btn find-action" id="replaceAllBtn">Todo</button>
+              </div>
+            </div>
           </div>
           <div id="stats-panel" class="stats-panel">
             <div class="basic-stats d-flex gap-3">
@@ -135,7 +153,8 @@
           <!-- Tab: Facebook -->
           <div id="output-fb-container" class="tab-content active">
             <div id="output" class="output" tabindex="0"></div>
-            <div class="pane-footer justify-content-end">
+            <div class="pane-footer justify-content-end d-flex gap-2">
+              <button class="copy-btn-sm" id="copyPlainTextBtn" style="background: transparent; color: var(--text-muted); border: 1px solid var(--border-color);">📄 Texto Plano</button>
               <button class="copy-btn-sm" id="copyBtn">📋 Copiar FB</button>
             </div>
           </div>
