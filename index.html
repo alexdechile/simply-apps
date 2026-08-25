@@ -17,7 +17,7 @@
     <!-- ===== HEADER ===== -->
     <header class="app-header sticky-top" style="align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 0.6rem 1rem; gap: 0.8rem;">
       
-      <!-- Sección Izquierda: Logo, Archivo, Limpieza y Configuración (Tono Amable) -->
+      <!-- Sección Izquierda: Logo, Archivo y Limpieza (Tono Amable) -->
       <div class="toolbar-section section-left">
         <div class="btn-pill-group">
           <button id="cargarArchivoBtn" class="action-btn friendly-btn" title="Cargar archivo">📁 Cargar</button>
@@ -46,35 +46,36 @@
           <button id="limpiarGatosBtn"   class="action-btn" title="Quitar solo los #">Limpiar #</button>
           <button id="borrarComentariosBtn" class="action-btn" title="Borrar líneas #">Borrar #</button>
         </div>
-
-        <div class="btn-pill-group ms-2">
-          <div class="dropdown">
-            <button class="action-btn dropdown-toggle" type="button" id="toneDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-              🎭 <span id="currentToneLabel">Coloquial</span>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="toneDropdown">
-              <li><a class="dropdown-item tone-option" href="#" data-value="fb_col">😊 Coloquial</a></li>
-              <li><a class="dropdown-item tone-option" href="#" data-value="fb_com">💼 Comercial</a></li>
-              <li><a class="dropdown-item tone-option" href="#" data-value="fb_neu">⚖️ Neutro</a></li>
-            </ul>
-          </div>
-          <div class="dropdown">
-            <button class="action-btn dropdown-toggle" type="button" id="aiModelBtn" data-bs-toggle="dropdown" aria-expanded="false" title="Modelo de IA">
-              🤖 <span id="currentModelLabel">NVIDIA</span>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-dark" id="aiModelMenu" aria-labelledby="aiModelBtn">
-              <li><h6 class="dropdown-header">Modelos disponibles</h6></li>
-              <li><span class="dropdown-item-text text-secondary" id="aiModelLoading">Cargando...</span></li>
-            </ul>
-          </div>
-        </div>
       </div>
 
-      <!-- Sección Central: Logo Centrado y Alertas de Redundancia -->
-      <div class="toolbar-section section-center" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 180px;">
-        <h2 class="m-0 text-center" style="font-size: 1.05rem; letter-spacing: 2px; white-space: nowrap;">SIMPLY <span>APPS</span></h2>
-        <div id="overused-words-container" class="small text-warning d-none text-center mt-1" style="font-size: 0.72rem; line-height: 1.2; max-width: 280px;">
-          ⚠️ <span id="overused-words-list" style="font-weight: 500;"></span>
+      <!-- Sección Central: Logo Centrado, Configuración de Contexto y Alertas -->
+      <div class="toolbar-section section-center" style="display: flex; align-items: center; justify-content: center; gap: 0.8rem; min-width: 380px;">
+        <div class="dropdown">
+          <button class="action-btn dropdown-toggle" type="button" id="toneDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+            🎭 <span id="currentToneLabel">Coloquial</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="toneDropdown">
+            <li><a class="dropdown-item tone-option" href="#" data-value="fb_col">😊 Coloquial</a></li>
+            <li><a class="dropdown-item tone-option" href="#" data-value="fb_com">💼 Comercial</a></li>
+            <li><a class="dropdown-item tone-option" href="#" data-value="fb_neu">⚖️ Neutro</a></li>
+          </ul>
+        </div>
+
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <h2 class="m-0 text-center" style="font-size: 1.05rem; letter-spacing: 2px; white-space: nowrap;">SIMPLY <span>APPS</span></h2>
+          <div id="overused-words-container" class="small text-warning d-none text-center mt-1" style="font-size: 0.72rem; line-height: 1.2; max-width: 250px;">
+            ⚠️ <span id="overused-words-list" style="font-weight: 500;"></span>
+          </div>
+        </div>
+
+        <div class="dropdown">
+          <button class="action-btn dropdown-toggle" type="button" id="aiModelBtn" data-bs-toggle="dropdown" aria-expanded="false" title="Modelo de IA">
+            🤖 <span id="currentModelLabel">NVIDIA</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-dark" id="aiModelMenu" aria-labelledby="aiModelBtn">
+            <li><h6 class="dropdown-header">Modelos disponibles</h6></li>
+            <li><span class="dropdown-item-text text-secondary" id="aiModelLoading">Cargando...</span></li>
+          </ul>
         </div>
       </div>
 
