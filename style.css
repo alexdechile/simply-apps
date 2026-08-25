@@ -34,6 +34,11 @@
   /* Spice buttons */
   --spice-from: #6366f1;
   --spice-to: #a855f7;
+
+  /* Friendly action colors */
+  --friendly-from: #0d9488;
+  --friendly-to: #0284c7;
+  --friendly-glow: rgba(13, 148, 136, 0.3);
 }
 
 /* ============ SKETCH THEME ============ */
@@ -108,6 +113,33 @@ body {
   gap: 0.6rem;
 }
 
+/* Toolbar Sections */
+.toolbar-section {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.toolbar-section.section-left {
+  flex: 1 1 0%;
+  justify-content: flex-start;
+}
+
+.toolbar-section.section-center {
+  flex: 0 0 auto;
+  justify-content: center;
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  padding: 0 0.6rem;
+}
+
+.toolbar-section.section-right {
+  flex: 1 1 0%;
+  justify-content: flex-end;
+}
+
+
 .app-header h2 {
   font-size: 0.95rem;
   font-weight: 900;
@@ -170,14 +202,17 @@ body {
   color: var(--text-main);
   border: 1px solid var(--border-color);
   border-radius: var(--btn-radius);
-  padding: 0.35rem 0.65rem;
+  padding: 0 0.75rem;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 0.78rem;
   font-family: var(--font-main);
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
   transition: all 0.18s ease;
-  line-height: 1.4;
 }
 
 .action-btn:hover {
@@ -218,6 +253,21 @@ body {
 .action-btn.spice-btn:hover {
   filter: brightness(1.15) !important;
   box-shadow: 0 4px 18px rgba(168, 85, 247, 0.5) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Friendly buttons — soft teal/blue pastel gradient */
+.action-btn.friendly-btn {
+  background: linear-gradient(135deg, var(--friendly-from), var(--friendly-to)) !important;
+  color: white !important;
+  border: none !important;
+  font-weight: 600 !important;
+  box-shadow: 0 2px 8px var(--friendly-glow) !important;
+}
+
+.action-btn.friendly-btn:hover {
+  background: linear-gradient(135deg, #14b8a6, var(--friendly-from)) !important;
+  box-shadow: 0 4px 16px var(--friendly-glow) !important;
   transform: translateY(-1px) !important;
 }
 

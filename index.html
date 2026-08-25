@@ -15,13 +15,39 @@
   <div class="app-container">
 
     <!-- ===== HEADER ===== -->
-    <header class="app-header sticky-top" style="align-items: flex-start; justify-content: space-between; flex-wrap: wrap; padding: 0.8rem 1rem;">
-      <!-- Columna Izquierda -->
-      <div class="d-flex flex-column gap-2">
+    <header class="app-header sticky-top" style="align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 0.6rem 1rem; gap: 0.8rem;">
+      
+      <!-- Sección Izquierda: Logo, Archivo, Limpieza y Configuración (Tono Amable) -->
+      <div class="toolbar-section section-left">
+        <div class="btn-pill-group">
+          <button id="cargarArchivoBtn" class="action-btn friendly-btn" title="Cargar archivo">📁 Cargar</button>
+          <button id="recoverVaultBtn" class="action-btn friendly-btn" title="Recuperar del Vault">📂 Recuperar</button>
+          <button id="vaultBtn" class="action-btn friendly-btn" title="Archivar en Vault">🗄️ Archivar</button>
+          <div class="dropdown" style="display: inline-block;">
+            <button type="button" class="action-btn dropdown-toggle friendly-btn" data-bs-toggle="dropdown" aria-expanded="false">
+              💾 Guardar
+            </button>
+            <ul class="dropdown-menu dropdown-menu-dark">
+              <li><a class="dropdown-item" href="#" id="guardarArchivoBtn">💾 Guardar Markdown (.md)</a></li>
+              <li><hr class="dropdown-divider border-secondary"></li>
+              <li><a class="dropdown-item" href="#" id="exportWordBtn">📄 Exportar a Word (.docx)</a></li>
+              <li><a class="dropdown-item" href="#" id="exportExcelBtn">📊 Exportar a Excel (.xlsx)</a></li>
+              <li><a class="dropdown-item" href="#" id="exportHtmlBtn">🌐 Exportar a HTML (.html)</a></li>
+            </ul>
+          </div>
+          <button id="pegarBtn"  class="action-btn friendly-btn">📋 Pegar</button>
+          <button id="limpiarBtn" class="action-btn btn-danger-soft">🗑️</button>
+        </div>
         
-        <!-- Fila Superior: Logo + Tono -->
-        <div class="header-left" style="flex: 0 0 auto;">
-          <h2 class="m-0">SIMPLY <span>APPS</span></h2>
+        <div class="btn-pill-group">
+          <button id="themeToggle" class="action-btn" title="Cambiar Tema">🎨</button>
+          <button id="findBtn"           class="action-btn" title="Buscar y reemplazar (Ctrl+F)">🔎</button>
+          <button id="emojiBtn"          class="action-btn" title="Insertar Emoji">😊</button>
+          <button id="limpiarGatosBtn"   class="action-btn" title="Quitar solo los #">Limpiar #</button>
+          <button id="borrarComentariosBtn" class="action-btn" title="Borrar líneas #">Borrar #</button>
+        </div>
+
+        <div class="btn-pill-group ms-2">
           <div class="dropdown">
             <button class="action-btn dropdown-toggle" type="button" id="toneDropdown" data-bs-toggle="dropdown" aria-expanded="false">
               🎭 <span id="currentToneLabel">Coloquial</span>
@@ -42,75 +68,48 @@
             </ul>
           </div>
         </div>
-
-        <!-- Fila Inferior: Acciones IA (Pulir a News) -->
-        <div class="header-center" style="flex: 0 0 auto; justify-content: flex-start;">
-          <div class="btn-pill-group">
-            <button id="pulirBtn"   class="action-btn ai-btn spice-btn" title="Corregir ortografía y pulir redacción">✨ Pulir</button>
-            <button id="decorarBtn" class="action-btn ai-btn spice-btn" title="Añadir emojis y decoración">🧂 Decorar</button>
-            <button id="sugerirBtn" class="action-btn ai-btn"           title="Sugerir ideas y párrafos">💡 Sugerir</button>
-            <button id="pensarBtn"  class="action-btn ai-btn"           title="Reflexión IA (donalex:1717)">🧠 Pensar</button>
-            <button id="investigarBtn" class="action-btn ai-btn"        title="Investigar tema con Scrapling">🔍 Investigar</button>
-          </div>
-          <div class="btn-pill-group">
-            <button id="cancionBtn" class="action-btn ai-btn" title="Post completo de canción con IA">🎵 Post</button>
-            <button id="techBtn"    class="action-btn ai-btn" title="Crónica tecnológica con IA">💻 Tech</button>
-            <button id="newsBtn"    class="action-btn ai-btn" title="Análisis de noticias con IA">📰 News</button>
-          </div>
-          <div class="btn-pill-group">
-            <div class="dropdown">
-              <button class="action-btn dropdown-toggle ai-btn" type="button" id="recetasIaBtn" data-bs-toggle="dropdown" aria-expanded="false" title="Recetas predefinidas de IA">
-                ⚡ Recetas
-              </button>
-              <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="recetasIaBtn">
-                <li><button class="dropdown-item" type="button" id="recetaHiloBtn">🐦 Generar Hilo de X</button></li>
-                <li><button class="dropdown-item" type="button" id="recetaPasBtn">🤝 Copywriting: PAS</button></li>
-                <li><button class="dropdown-item" type="button" id="recetaAidaBtn">🎯 Copywriting: AIDA</button></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><button class="dropdown-item" type="button" id="recetaHooksBtn">🪝 Generar Ganchos (Hooks)</button></li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
       </div>
 
-      <!-- Columna Derecha -->
-      <div class="d-flex flex-column gap-2 align-items-end">
+      <!-- Sección Central: Logo Centrado y Alertas de Redundancia -->
+      <div class="toolbar-section section-center" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 180px;">
+        <h2 class="m-0 text-center" style="font-size: 1.05rem; letter-spacing: 2px; white-space: nowrap;">SIMPLY <span>APPS</span></h2>
+        <div id="overused-words-container" class="small text-warning d-none text-center mt-1" style="font-size: 0.72rem; line-height: 1.2; max-width: 280px;">
+          ⚠️ <span id="overused-words-list" style="font-weight: 500;"></span>
+        </div>
+      </div>
+
+      <!-- Sección Derecha: Acciones Inteligentes e IA (Color Inteligencia - Glow) -->
+      <div class="toolbar-section section-right">
+        <div class="btn-pill-group">
+          <button id="pulirBtn"   class="action-btn ai-btn spice-btn" title="Corregir ortografía y pulir redacción">✨ Pulir</button>
+          <button id="decorarBtn" class="action-btn ai-btn spice-btn" title="Añadir emojis y decoración">🧂 Decorar</button>
+          <button id="sugerirBtn" class="action-btn ai-btn"           title="Sugerir ideas y párrafos">💡 Sugerir</button>
+          <button id="pensarBtn"  class="action-btn ai-btn"           title="Reflexión IA (donalex:1717)">🧠 Pensar</button>
+          <button id="investigarBtn" class="action-btn ai-btn"        title="Investigar tema con Scrapling">🔍 Investigar</button>
+        </div>
         
-        <!-- Fila Superior: Archivo y Vault -->
-        <div class="header-right" style="flex: 0 0 auto;">
-          <button id="cargarArchivoBtn" class="action-btn" title="Cargar archivo">📁 Cargar</button>
-          <button id="recoverVaultBtn" class="action-btn" title="Recuperar del Vault">📂 Recuperar</button>
-          <button id="vaultBtn" class="action-btn" title="Archivar en Vault">🗄️ Archivar</button>
+        <div class="btn-pill-group">
+          <button id="cancionBtn" class="action-btn ai-btn" title="Post completo de canción con IA">🎵 Post</button>
+          <button id="techBtn"    class="action-btn ai-btn" title="Crónica tecnológica con IA">💻 Tech</button>
+          <button id="newsBtn"    class="action-btn ai-btn" title="Análisis de noticias con IA">📰 News</button>
+        </div>
+
+        <div class="btn-pill-group">
           <div class="dropdown">
-            <button type="button" class="action-btn dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-              💾 Guardar
+            <button class="action-btn dropdown-toggle ai-btn" type="button" id="recetasIaBtn" data-bs-toggle="dropdown" aria-expanded="false" title="Recetas predefinidas de IA">
+              ⚡ Recetas
             </button>
-            <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end">
-              <li><a class="dropdown-item" href="#" id="guardarArchivoBtn">💾 Guardar Markdown (.md)</a></li>
-              <li><hr class="dropdown-divider border-secondary"></li>
-              <li><a class="dropdown-item" href="#" id="exportWordBtn">📄 Exportar a Word (.docx)</a></li>
-              <li><a class="dropdown-item" href="#" id="exportExcelBtn">📊 Exportar a Excel (.xlsx)</a></li>
-              <li><a class="dropdown-item" href="#" id="exportHtmlBtn">🌐 Exportar a HTML (.html)</a></li>
+            <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="recetasIaBtn">
+              <li><button class="dropdown-item" type="button" id="recetaHiloBtn">🐦 Generar Hilo de X</button></li>
+              <li><button class="dropdown-item" type="button" id="recetaPasBtn">🤝 Copywriting: PAS</button></li>
+              <li><button class="dropdown-item" type="button" id="recetaAidaBtn">🎯 Copywriting: AIDA</button></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><button class="dropdown-item" type="button" id="recetaHooksBtn">🪝 Generar Ganchos (Hooks)</button></li>
             </ul>
           </div>
-          <button id="pegarBtn"  class="action-btn">📋 Pegar</button>
-          <button id="limpiarBtn" class="action-btn btn-danger-soft">🗑️</button>
         </div>
-
-        <!-- Fila Inferior: Utilidades -->
-        <div class="header-right" style="flex: 0 0 auto; justify-content: flex-end;">
-          <button id="themeToggle" class="action-btn" title="Cambiar Tema">🎨</button>
-          <div class="btn-pill-group">
-            <button id="findBtn"           class="action-btn" title="Buscar y reemplazar (Ctrl+F)">🔎</button>
-            <button id="emojiBtn"          class="action-btn" title="Insertar Emoji">😊</button>
-            <button id="limpiarGatosBtn"   class="action-btn" title="Quitar solo los #">Limpiar #</button>
-            <button id="borrarComentariosBtn" class="action-btn" title="Borrar líneas #">Borrar #</button>
-          </div>
-        </div>
-
       </div>
+
     </header>
 
     <!-- ===== MAIN ===== -->
@@ -148,10 +147,11 @@
               <span>Palabras: <b id="word-count">0</b></span>
               <span id="reading-time-container">Lectura: <b id="reading-time">0</b> min</span>
             </div>
-            <div id="rust-stats" class="d-flex gap-3 d-none">
+            <div id="rust-stats" class="d-flex flex-wrap gap-3 d-none">
               <span>Densidad: <b id="lexical-density">0</b>%</span>
               <span>Oraciones: <b id="sentence-count">0</b></span>
               <span id="top-words-container" title="Palabras clave">🔑 <span id="top-words"></span></span>
+              <span>Legibilidad: <b id="legibilidad-val">0</b> (<span id="legibilidad-desc">-</span>)</span>
             </div>
           </div>
         </div>

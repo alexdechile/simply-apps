@@ -1,6 +1,13 @@
 # Bitácora de Alex - Simply Apps
 
 ## Último Realizado [2026-08-25]
+- **Rediseño del Layout de la Toolbar & Estética:**
+  - **Fila Superior:** Logo `SIMPLY APPS` centrado en una sola línea.
+  - **Fila Inferior:** Dividida en 3 columnas de flexbox balanceadas:
+    - *Izquierda:* Acciones de archivo y limpiadores con la nueva clase CSS `.friendly-btn` en un degradado amable (turquesa-celeste).
+    - *Centro:* Configuración de contexto (Tono, Modelo de IA) con separadores limpios.
+    - *Derecha:* Acciones e investigaciones inteligentes de IA.
+  - **Uniformidad:** Se homogeneizó la altura de todos los botones en 32px usando `display: inline-flex` en CSS.
 - **Recetas de IA para Redes Sociales (Fase 1):** Se implementó la primera fase del plan de potenciación del editor.
   - **Backend:** Nuevos endpoints `/ai-thread`, `/ai-copywrite` y `/ai-hooks` en `server.js` que invocan el comando `aichat` mediante `spawn` para interactuar de forma segura con modelos de NVIDIA NIM.
   - **Frontend:** Se agregó un dropdown "⚡ Recetas" en la barra de herramientas (`index.html`) con accesos directos para: "Generar Hilo de X", "Copywriting PAS", "Copywriting AIDA", y "Generar Ganchos (Hooks)".
@@ -12,6 +19,13 @@
   - **UI / Frontend:** Se añadió un select de categorías en el modal de investigación de `index.html`. La IA pre-selecciona el tema en la planificación en `script.js` y el backend procesa con ese filtro.
   - **Referencias Reales:** Se implementó la inserción automática de un bloque Markdown de bibliografía con enlaces reales clicables al final del reporte en `script.js`, erradicando enlaces alucinados.
   - **OpenSpec:** Planificación y checklist de tareas controlados bajo el cambio `investigacion-fuentes-prioritarias`.
+- **Métricas Lingüísticas Locales y Sinónimos en Rust (Fase 3):**
+  - **Rust simply-analyzer:**
+    - Algoritmo heurístico local de conteo de sílabas en español.
+    - Implementación de la fórmula de legibilidad Flesch-Szigriszt.
+    - Detección de sobreuso de vocabulario (redundancia) y diccionario estático ligero de sinónimos integrados.
+  - **UI / Frontend:** Se actualizaron `index.html` y `script.js` para mostrar el score Flesch-Szigriszt, su descripción interpretativa en tiempo real y mostrar las alertas de redundancia con sugerencias de sinónimos rápidos directamente debajo de las estadísticas.
+  - **OpenSpec:** Planificación y checklist de tareas controlados bajo el cambio `rust-analyzer-enhancements`.
 
 ## Último Realizado [2026-08-21]
 - **Revisión y Actualización de Documentación:** Se actualizaron todos los archivos MD del proyecto (`alex.md`, `memory.md`, `DESIGN.md`, `agents.md`) para reflejar el estado actual de la aplicación en la rama `casa`.

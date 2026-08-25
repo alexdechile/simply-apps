@@ -274,13 +274,30 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
       const elLD = document.getElementById('lexical-density');
       const elSC = document.getElementById('sentence-count');
       const elTW = document.getElementById('top-words');
+      const elLegVal = document.getElementById('legibilidad-val');
+      const elLegDesc = document.getElementById('legibilidad-desc');
       const rustPanel = document.getElementById('rust-stats');
+      const overusedContainer = document.getElementById('overused-words-container');
+      const overusedList = document.getElementById('overused-words-list');
 
       if (elRT) elRT.textContent = data.reading_time_mins;
       if (elLD) elLD.textContent = data.lexical_density;
       if (elSC) elSC.textContent = data.sentence_count;
       if (elTW) {
         elTW.textContent = data.top_words.map(w => w[0]).join(', ');
+      }
+      if (elLegVal) elLegVal.textContent = data.szigriszt_score;
+      if (elLegDesc) elLegDesc.textContent = data.szigriszt_interpretation;
+      
+      if (overusedContainer && overusedList) {
+        if (data.overused_words && data.overused_words.length > 0) {
+          overusedList.innerHTML = data.overused_words.map(w => {
+            return `<span class="badge bg-secondary me-1 text-white" style="font-weight: 500;" title="Sinónimos: ${w.synonyms.join(', ')}">"${w.word}" (${w.count}x ➔ intenta: ${w.synonyms.slice(0, 3).join(', ')})</span>`;
+          }).join(' ');
+          overusedContainer.classList.remove('d-none');
+        } else {
+          overusedContainer.classList.add('d-none');
+        }
       }
       
       if (rustPanel) rustPanel.classList.remove('d-none');
