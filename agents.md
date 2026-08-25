@@ -114,4 +114,24 @@ Se modificó `server.js` para que los 3 endpoints que llaman a `aichat` especifi
 - `aichat` desde Simply Apps usa **NVIDIA** como modelo, evitando la inestabilidad de Ollama.
 - `aichat` en la línea de comandos (CLI) **sigue usando Ollama** como default, sin cambios en `~/.config/aichat/config.yaml`.
 
+## [2026-08-21] Revisión General y Actualización de Documentación
+**Agente:** Antigravity (Google DeepMind) — Claude Sonnet 4.6 Thinking
 
+### Contexto:
+Primera sesión con el agente Antigravity. El proyecto se encuentra en la rama `casa` (homelab), con 4 archivos modificados sin commitear.
+
+### Acciones Realizadas:
+1. **Lectura y auditoría completa del proyecto:**
+   - Se revisaron todos los archivos MD existentes (`alex.md`, `memory.md`, `DESIGN.md`, `gemini.md`, `agents.md`, `RESUMEN.md`).
+   - Se analizó el estado actual del repo git: rama `casa`, cambios no commiteados en `index.html`, `script.js`, `server.js`, `style.css`.
+   - Se identificaron archivos sin tracking: `.agent/`, `.agents/skills/`, `openspec/`, `reiniciar.sh`.
+2. **Actualización de Documentación:**
+   - `alex.md`: Nueva entrada "Último Realizado [2026-08-21]" con estado actual del proyecto.
+   - `memory.md`: Tabla de archivos clave actualizada con todos los endpoints actuales (incluyendo `/ai-decorate`, `/tech/completo`, `/news/completo`, `/ai-models`, `/api/fuentes`). Se añadió `reiniciar.sh` y `openspec/specs/main.md`. Se agregaron secciones "Estado Actual" y "Sistema OpenSpec".
+   - `DESIGN.md`: Pendiente de actualizar con `/tech/completo` y `/news/completo`.
+   - `agents.md`: Esta entrada.
+
+### Estado del Sistema:
+- **Servidor:** Express en puerto 1717, corriendo como `simply-apps.service` (systemd usuario)
+- **Endpoints activos:** `/ask-ai`, `/research`, `/ai-polish`, `/ai-suggest`, `/ai-analyze`, `/ai-decorate`, `/cancion/completo`, `/tech/completo`, `/news/completo`, `/export`, `/save-to-vault`, `/api/fuentes`, `/vault/posts`, `/ai-models`
+- **Rama Git:** `casa` (homelab version)

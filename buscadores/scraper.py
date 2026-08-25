@@ -12,7 +12,7 @@ def get_fuentes_path():
     )
 
 
-def get_prioritized_domains(max_domains=100):
+def get_prioritized_domains(category=None, max_domains=100):
     domains = []
     path = get_fuentes_path()
     if not os.path.exists(path):
@@ -20,6 +20,38 @@ def get_prioritized_domains(max_domains=100):
     try:
         with open(path, "r", encoding="utf-8") as f:
             content = f.read()
+        
+        if category:
+            category = category.lower().strip()
+            mappings = {
+                "ciencia": "ciencia",
+                "medicina": "ciencia",
+                "derecho": "derecho",
+                "politica": "derecho",
+                "economia": "economía",
+                "finanzas": "economía",
+                "historia": "historia",
+                "humanidades": "historia",
+                "tecnologia": "tecnología",
+                "ia": "tecnología",
+                "datos": "datos",
+                "estadisticas": "datos"
+            }
+            keyword = mappings.get(category)
+            if keyword:
+                sections = re.split(r'\n## ', '\n' + content)
+                matched_content = ""
+                for sec in sections:
+                    lines = sec.strip().split('\n')
+                    if lines:
+                        title = lines[0].lower()
+                        if keyword in title:
+                            matched_content = '\n'.join(lines[1:])
+                            break
+                if matched_content:
+                    content = matched_content
+                    print(f"Filtrando fuentes.md por categoría: {category} (keyword: {keyword})", file=sys.stderr)
+
         matches = re.findall(r"\[.*?\]\((https?://.*?)\)", content)
         for url in matches:
             parsed = urllib.parse.urlparse(url)
@@ -39,7 +71,7 @@ def get_prioritized_domains(max_domains=100):
     return domains[:max_domains]
 
 
-def search_ddg(query, max_links=3, skip_ads=True, prioritize=False):
+def search_ddg(query, max_links=3, skip_ads=True, prioritize=False, category=None):
     url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
     try:
         page = Fetcher.get(url)
@@ -65,7 +97,7 @@ def search_ddg(query, max_links=3, skip_ads=True, prioritize=False):
                 break
                 
         if prioritize:
-            p_domains = get_prioritized_domains(max_domains=150)
+            p_domains = get_prioritized_domains(category=category, max_domains=150)
             matched = []
             others = []
             for link in raw_links:

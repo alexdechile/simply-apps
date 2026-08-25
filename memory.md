@@ -32,14 +32,16 @@ Ahora la app corre como un servicio de fondo:
 ## Archivos Clave
 | Archivo | Propósito |
 |---|---|
-| `server.js` | Backend Express, proxy IA, endpoints `/ask-ai`, `/research`, `/export`, `/save-to-vault`, `/ai-polish`, `/ai-suggest`, `/ai-analyze` |
-| `script.js` | Lógica frontend completa (editor, IA, pulido, sugerencias, análisis Rust, modales) |
+| `server.js` | Backend Express, proxy IA, endpoints: `/ask-ai`, `/research`, `/export`, `/save-to-vault`, `/ai-polish`, `/ai-suggest`, `/ai-analyze`, `/ai-decorate`, `/cancion/completo`, `/tech/completo`, `/news/completo`, `/ai-models`, `/api/fuentes`, `/vault/posts` |
+| `script.js` | Lógica frontend completa (editor, IA, pulido, sugerencias, análisis Rust, modales, FB/X/LI) |
 | `simply-analyzer/` | Proyecto Rust para análisis de texto de alto rendimiento |
 | `editor.js` | Legacy (Tiptap) — NO se usa, el editor activo es EasyMDE en `script.js` |
 | `index.html` | Estructura, modales, toolbar |
 | `style.css` | Estilos, temas, animaciones modal |
 | `.env` | Variables de entorno (DEEPINFRA_API_KEY) |
 | `iniciar.sh` | Mata servidor anterior, arranca Express en 1717, abre navegador |
+| `reiniciar.sh` | Script de reinicio rápido del servidor (sin abrir navegador) |
+| `openspec/specs/main.md` | Spec principal del proyecto (OpenSpec) |
 
 ## Lecciones Aprendidas
 1. **IA cleanup:** La IA siempre incluye bloques ` ```markdown ` — limpiar con regex antes de mostrar/inyectar.
@@ -75,3 +77,22 @@ Ahora la app corre como un servicio de fondo:
 
 ## Archivos Ignorados por Git
 - `.env`, `venv/`, `node_modules/`, `__pycache__/`, `simply.log`
+
+## Estado Actual (2026-08-21)
+- **Rama activa:** `casa` (homelab)
+- **Archivos con cambios pendientes:** `index.html`, `script.js`, `server.js`, `style.css`
+- **Sin commit:** `.agent/`, `.agents/skills/`, `openspec/`, `reiniciar.sh`
+- **Agente actual:** Antigravity (Google DeepMind) con Claude Sonnet 4.6 Thinking
+
+## Sistema OpenSpec
+- **Ubicación:** `openspec/` (no trackeado en git aún)
+- **Skills disponibles:** propose, apply-change, explore, archive-change, update-change, sync-specs
+- **Specs:** `openspec/specs/main.md` (spec principal del proyecto)
+- **Changes:** `openspec/changes/archive/` (historial de cambios archivados)
+
+## Skill: simply-stickies
+- **Ubicación:** `.agent/skills/simply-stickies/` (AGY) y `.agents/skills/simply-stickies/` (OpenCode)
+- **Archivo de datos:** `archivos/stickies.json`
+- **API:** `GET /api/stickies` y `POST /api/stickies`
+- **Helper CLI:** `.agent/skills/simply-stickies/stickies.sh [list|show|resolve|unresolve|all]`
+- **Propósito:** Permite a los agentes leer las notas de mejora pegadas en el diagrama visual de Simply Apps y trabajar en ellas como tareas de código concretas.

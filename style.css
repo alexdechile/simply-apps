@@ -427,7 +427,7 @@ main.row {
 .output, .output-x, .output-li {
   flex-grow: 1;
   border: none;
-  height: 100% !important;
+  min-height: 0;
   line-height: 1.7;
   padding: 1.25rem 1.5rem;
   overflow-y: auto !important;
@@ -832,7 +832,8 @@ body.theme-sketch .find-match { background: rgba(255, 200, 0, 0.45); }
 }
 
 /* ============ RESEARCH MODAL ============ */
-#researchModal {
+#researchModal,
+#recoverVaultModal {
   z-index: 5000 !important;
 }
 
@@ -1106,4 +1107,100 @@ body.theme-sketch .tone-selector {
   .pane-container {
     height: 520px;
   }
+}
+
+/* ============================================
+   DIAGRAMA DE ARQUITECTURA + STICKIES
+   ============================================ */
+
+/* Contenedor del tab diagrama */
+#diagrama-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+#diagrama-container.active {
+  display: flex !important;
+}
+
+/* Toolbar del diagrama */
+.diagram-toolbar {
+  background: var(--toolbar-bg);
+  flex-shrink: 0;
+}
+
+/* Canvas del diagrama */
+#diagram-canvas {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  background: radial-gradient(ellipse at center, #0d0d1a 0%, #080812 100%);
+  user-select: none;
+}
+
+/* SVG generado por Mermaid */
+#diagram-mermaid svg {
+  max-width: none !important;
+}
+
+/* Nodos del diagrama — cursor pointer agregado via JS */
+#diagram-mermaid .node rect,
+#diagram-mermaid .node polygon,
+#diagram-mermaid .node circle,
+#diagram-mermaid .cluster rect {
+  stroke-width: 1.5px;
+}
+
+/* Instrucción inferior */
+#diagrama-container > div:last-child {
+  flex-shrink: 0;
+  background: var(--toolbar-bg);
+}
+
+/* Stickies pegados en el diagrama */
+.diagram-sticky {
+  animation: stickyAppear 0.2s ease-out;
+}
+
+@keyframes stickyAppear {
+  from { opacity: 0; transform: scale(0.85) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Botones de color del modal de sticky */
+.sticky-color-btn:hover {
+  outline: 2px solid white;
+  outline-offset: 2px;
+}
+
+/* Sketch theme: ajuste del canvas */
+body.theme-sketch #diagram-canvas {
+  background: #f0f0f0;
+}
+
+/* Botones de zoom del diagrama */
+.diagram-zoom-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+.diagram-zoom-btn:hover {
+  background: rgba(255,255,255,0.12);
+  color: var(--accent);
+}
+body.theme-sketch .diagram-zoom-btn {
+  color: #333;
+}
+body.theme-sketch .diagram-zoom-btn:hover {
+  background: rgba(0,0,0,0.08);
+  color: var(--accent);
 }

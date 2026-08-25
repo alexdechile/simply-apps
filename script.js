@@ -9,6 +9,7 @@
     copyX: document.getElementById('copyXBtn'),
     copyLI: document.getElementById('copyLIBtn'),
     vault: document.getElementById('vaultBtn'),
+    recoverVaultBtn: document.getElementById('recoverVaultBtn'),
     editor: document.getElementById('editor'),
     pensar: document.getElementById('pensarBtn'),
     genX: document.getElementById('genXBtn'),
@@ -25,6 +26,10 @@
     pulir: document.getElementById('pulirBtn'),
     decorar: document.getElementById('decorarBtn'),
     sugerir: document.getElementById('sugerirBtn'),
+    recetaHilo: document.getElementById('recetaHiloBtn'),
+    recetaPas: document.getElementById('recetaPasBtn'),
+    recetaAida: document.getElementById('recetaAidaBtn'),
+    recetaHooks: document.getElementById('recetaHooksBtn'),
     exportWord: document.getElementById('exportWordBtn'),
     exportExcel: document.getElementById('exportExcelBtn'),
     exportHtml: document.getElementById('exportHtmlBtn'),
@@ -817,6 +822,150 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
     };
   }
 
+  // --- GENERAR HILO DE X ---
+  if (el.recetaHilo) {
+    el.recetaHilo.onclick = async () => {
+      const content = easyMDE.value();
+      if (!content.trim()) return;
+
+      const originalText = el.recetaHilo.innerHTML;
+      el.recetaHilo.innerHTML = '🐦 Generando...';
+      el.recetaHilo.disabled = true;
+
+      try {
+        const response = await fetch('ai-thread', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content, model: getSelectedModel() })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(errText || 'Error al generar hilo');
+        }
+
+        const data = await response.json();
+
+        if (data.content && data.content !== content) {
+          if (confirm(`🐦 Se generó un hilo de X.\n\n¿Quieres inyectar el resultado en el editor?`)) {
+            const cm = easyMDE.codemirror;
+            cm.getDoc().setValue(data.content);
+            cm.refresh();
+            cm.scrollTo(0, 0);
+            actualizarVistas();
+          }
+        } else {
+          alert('🐦 No se generó ningún hilo adicional.');
+        }
+      } catch (e) {
+        console.error(e);
+        alert('Error al generar hilo: ' + e.message);
+      } finally {
+        el.recetaHilo.innerHTML = originalText;
+        el.recetaHilo.disabled = false;
+      }
+    };
+  }
+
+  // --- COPYWRITING PAS & AIDA ---
+  const aplicarCopywriting = async (formula) => {
+    const content = easyMDE.value();
+    if (!content.trim()) return;
+
+    const btn = formula === 'pas' ? el.recetaPas : el.recetaAida;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = `${formula === 'pas' ? '🤝' : '🎯'} Reescribiendo...`;
+    btn.disabled = true;
+
+    try {
+      const response = await fetch('ai-copywrite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, model: getSelectedModel(), formula })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(errText || 'Error al aplicar copywriting');
+      }
+
+      const data = await response.json();
+
+      if (data.content && data.content !== content) {
+        if (confirm(`${formula === 'pas' ? '🤝' : '🎯'} Estilo aplicado exitosamente.\n\n¿Quieres inyectar el resultado en el editor?`)) {
+          const cm = easyMDE.codemirror;
+          cm.getDoc().setValue(data.content);
+          cm.refresh();
+          cm.scrollTo(0, 0);
+          actualizarVistas();
+        }
+      } else {
+        alert('No se sugirieron cambios de copywriting.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error en copywriting: ' + e.message);
+    } finally {
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+    }
+  };
+
+  if (el.recetaPas) {
+    el.recetaPas.onclick = () => aplicarCopywriting('pas');
+  }
+
+  if (el.recetaAida) {
+    el.recetaAida.onclick = () => aplicarCopywriting('aida');
+  }
+
+  // --- GENERAR GANCHOS (HOOKS) ---
+  if (el.recetaHooks) {
+    el.recetaHooks.onclick = async () => {
+      const content = easyMDE.value();
+      if (!content.trim()) return;
+
+      const originalText = el.recetaHooks.innerHTML;
+      el.recetaHooks.innerHTML = '🪝 Generando...';
+      el.recetaHooks.disabled = true;
+
+      try {
+        const response = await fetch('ai-hooks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content, model: getSelectedModel() })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(errText || 'Error al generar ganchos');
+        }
+
+        const data = await response.json();
+
+        if (data.content) {
+          if (confirm(`🪝 Propuestas de ganchos (Hooks):\n\n${data.content}\n\n¿Quieres añadir estas propuestas al final del editor?`)) {
+            const cm = easyMDE.codemirror;
+            const currentVal = cm.getValue();
+            const newVal = currentVal + '\n\n---\n\n🪝 **Propuestas de Ganchos (Hooks):**\n' + data.content;
+            cm.getDoc().setValue(newVal);
+            cm.refresh();
+            cm.scrollTo(0, cm.getScrollInfo().height);
+            actualizarVistas();
+          }
+        } else {
+          alert('🪝 La IA no pudo generar propuestas por ahora.');
+        }
+      } catch (e) {
+        console.error(e);
+        alert('Error al generar ganchos: ' + e.message);
+      } finally {
+        el.recetaHooks.innerHTML = originalText;
+        el.recetaHooks.disabled = false;
+      }
+    };
+  }
+
   // --- IA donalex:1717 ---
   async function callAI(systemPrompt, userContent) {
     const controller = new AbortController();
@@ -1037,6 +1186,7 @@ ${text}`;
   const researchStatusText = document.getElementById('researchStatusText');
   const searchQueryInput = document.getElementById('searchQueryInput');
   const trendsInput = document.getElementById('trendsInput');
+  const researchCategoryInput = document.getElementById('researchCategoryInput');
   const startResearchBtn = document.getElementById('startResearchBtn');
   const researchInjectBtn = document.getElementById('researchInjectBtn');
   const researchCopyBtn = document.getElementById('researchCopyBtn');
@@ -1136,12 +1286,13 @@ ${text}`;
     showResearchConfig();
 
     try {
-      // PASO 1: Planificación (Pedimos Query + Dominios)
+      // PASO 1: Planificación (Pedimos Query + Dominios + Categoría)
       const planPrompt = `Eres un estratega de investigación. Analiza el tema: "${rawTopic}". 
 Responde con un objeto JSON (solo el JSON) con este formato:
 {
   "query": "texto de búsqueda simple para google",
-  "tendencias": "3 dominios relevantes separados por comas (ej: Neurociencia, Nutrición, Psicología)"
+  "tendencias": "3 dominios relevantes separados por comas (ej: Neurociencia, Nutrición, Psicología)",
+  "category": "elige una del siguiente listado: ciencia, derecho, economia, historia, tecnologia, datos, general"
 }`;
       
       const planRaw = await callAI("Estratega de Investigación", planPrompt);
@@ -1149,18 +1300,20 @@ Responde con un objeto JSON (solo el JSON) con este formato:
       try {
         plan = JSON.parse(planRaw.replace(/```json|```/g, ''));
       } catch (e) {
-        plan = { query: rawTopic, tendencias: "General, Ciencia, Tendencias" };
+        plan = { query: rawTopic, tendencias: "General, Ciencia, Tendencias", category: "general" };
       }
 
       // PASO 2: Mostrar Modal con configuración
       searchQueryInput.value = plan.query;
       trendsInput.value = plan.tendencias;
+      researchCategoryInput.value = plan.category || "general";
       showModalSlide();
 
       // Manejador del botón del modal
       startResearchBtn.onclick = async () => {
         const finalQuery = searchQueryInput.value;
         const finalTrends = trendsInput.value;
+        const finalCategory = researchCategoryInput.value;
         const depth = document.querySelector('input[name="researchDepth"]:checked').value;
         if (!finalQuery) return;
 
@@ -1175,7 +1328,7 @@ Responde con un objeto JSON (solo el JSON) con este formato:
           const response = await fetch('research', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ topic: finalQuery, depth: depth }),
+            body: JSON.stringify({ topic: finalQuery, depth: depth, category: finalCategory }),
             signal: controller.signal
           });
           clearTimeout(timeoutId);
@@ -1192,7 +1345,7 @@ Investigación: "${rawTopic}".
 ENFOQUE REQUERIDO: ${finalTrends}.
 DATOS:
 ---
-${data.content ? data.content.substring(0, 7000) : 'Sin datos'}
+${data.full_report ? data.full_report.substring(0, 7000) : 'Sin datos'}
 ---
 Genera un reporte "Simply Style" con esta estructura:
 
@@ -1210,8 +1363,14 @@ Genera un reporte "Simply Style" con esta estructura:
             throw new Error('La IA devolvió un reporte demasiado corto o vacío.');
           }
 
-          // Limpiar bloques de código markdown
-          pendingSynthesis = finalReport.replace(/^```markdown\n?/g, '').replace(/```$/g, '').trim();
+          // Inyectar referencias reales basadas en la respuesta del backend
+          let referencesText = "";
+          if (data.links && data.links.length > 0) {
+            referencesText = "\n\n---\n\n### 📚 Referencias Reales\n" + data.links.map(l => `- [${l.title}](${l.url})`).join("\n");
+          }
+
+          // Limpiar bloques de código markdown y añadir referencias reales
+          pendingSynthesis = finalReport.replace(/^```markdown\n?/g, '').replace(/```$/g, '').trim() + referencesText;
           localStorage.setItem('simply-pending-research', pendingSynthesis);
 
           // Mostrar resultados en el modal
@@ -1458,6 +1617,61 @@ Genera un reporte "Simply Style" con esta estructura:
       alert('Error al guardar en Vault: ' + e.message);
     }
   };
+
+  // --- RECOVER FROM VAULT ---
+  if (el.recoverVaultBtn) {
+    el.recoverVaultBtn.onclick = async () => {
+      try {
+        const response = await fetch('vault/posts');
+        const data = await response.json();
+        
+        const postsList = document.getElementById('vaultPostsList');
+        if (!data.posts || data.posts.length === 0) {
+          postsList.innerHTML = '<div class="list-group-item text-center text-secondary small">No hay posts en el Vault</div>';
+          return;
+        }
+        
+        let html = '';
+        data.posts.forEach(post => {
+          html += `
+            <a href="javascript:void(0)" class="list-group-item list-group-item-action bg-dark text-white border-secondary mb-1" data-filename="${post.name}">
+              <div class="d-flex w-100 justify-content-between">
+                <h6 class="mb-1">${post.name}</h6>
+                <small class="text-muted">${new Date(post.mtime).toLocaleDateString()}</small>
+              </div>
+              <p class="mb-1 small line-clamp-2">${post.content ? post.content.substring(0, 100) + '...' : ''}</p>
+            </a>
+          `;
+        });
+        postsList.innerHTML = html;
+        
+        // Manejar clic en un post
+        postsList.querySelectorAll('a').forEach(item => {
+          item.onclick = async (e) => {
+            e.preventDefault();
+            const filename = item.dataset.filename;
+            const postResponse = await fetch(`vault/post/${filename}`);
+            const postData = await postResponse.json();
+            
+            if (postData.content) {
+              easyMDE.value(postData.content);
+              actualizarVistas();
+              // Cerrar modal
+              const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('recoverVaultModal'));
+              modal.hide();
+            }
+          };
+        });
+        
+        // Mostrar el modal después de cargar la lista
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('recoverVaultModal'));
+        modal.show();
+      } catch (e) {
+        console.error('[Vault Recovery] Error:', e);
+        alert('Error al recuperar posts del Vault: ' + e.message);
+      }
+    };
+  }
 
   // --- CARGAR/GUARDAR LOCAL ---
   el.guardarArchivoBtn.onclick = () => {

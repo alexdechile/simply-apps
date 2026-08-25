@@ -27,11 +27,19 @@ server.js
 ├── POST /ask-ai             → Proxy a DeepInfra API
 ├── POST /research           → Ejecuta researcher.py (Scrapling)
 ├── POST /cancion/completo   → Ejecuta buscadores/cancion.py (post musical)
+├── POST /tech/completo      → Post tecnológico con IA (DeepInfra)
+├── POST /news/completo      → Post de noticias con IA (DeepInfra)
 ├── POST /ai-polish          → Ejecuta aichat CLI (pulido de texto)
 ├── POST /ai-suggest         → Ejecuta aichat CLI (sugerencia de ideas/párrafos)
+├── POST /ai-decorate        → Ejecuta aichat CLI (decoración con emojis)
 ├── POST /ai-analyze         → Ejecuta simply-analyzer (Rust) para métricas
+├── GET  /ai-models          → Lista de modelos IA disponibles
 ├── POST /export             → Ejecuta exporter.py (docx/xlsx/html)
-└── POST /save-to-vault      → Guarda en /home/alexdechile/vault/posts/
+├── POST /save-to-vault      → Guarda en /home/alexdechile/vault/posts/
+├── GET  /vault/posts        → Lista posts guardados en vault
+├── GET  /vault/post/:file   → Obtiene un post específico del vault
+├── GET  /api/fuentes        → Lee archivos/fuentes.md
+└── POST /api/fuentes        → Escribe archivos/fuentes.md
 ```
 
 ### Frontend

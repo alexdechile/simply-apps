@@ -1,5 +1,24 @@
 # Bitácora de Alex - Simply Apps
 
+## Último Realizado [2026-08-25]
+- **Recetas de IA para Redes Sociales (Fase 1):** Se implementó la primera fase del plan de potenciación del editor.
+  - **Backend:** Nuevos endpoints `/ai-thread`, `/ai-copywrite` y `/ai-hooks` en `server.js` que invocan el comando `aichat` mediante `spawn` para interactuar de forma segura con modelos de NVIDIA NIM.
+  - **Frontend:** Se agregó un dropdown "⚡ Recetas" en la barra de herramientas (`index.html`) con accesos directos para: "Generar Hilo de X", "Copywriting PAS", "Copywriting AIDA", y "Generar Ganchos (Hooks)".
+  - **Interacción:** Lógica en `script.js` con loaders correspondientes y modales de confirmación para inyectar/añadir el texto resultante directamente en EasyMDE.
+  - **OpenSpec:** Planificación y checklist de tareas generados y validados completamente bajo el cambio `recetas-ia-copywriting`.
+- **Investigación Quirúrgica con fuentes.md por Categorías (Fase 2):**
+  - **Scraper Python:** Modificado `buscadores/scraper.py` para parsear por secciones `fuentes.md` (Ciencia, Derecho, Economía, Tecnología, etc.) y filtrar dinámicamente los dominios priorizados al buscar en DuckDuckGo.
+  - **Salida JSON:** `researcher.py` ahora devuelve un JSON estructurado con el reporte en crudo y la lista exacta de fuentes scrapeadas exitosamente.
+  - **UI / Frontend:** Se añadió un select de categorías en el modal de investigación de `index.html`. La IA pre-selecciona el tema en la planificación en `script.js` y el backend procesa con ese filtro.
+  - **Referencias Reales:** Se implementó la inserción automática de un bloque Markdown de bibliografía con enlaces reales clicables al final del reporte en `script.js`, erradicando enlaces alucinados.
+  - **OpenSpec:** Planificación y checklist de tareas controlados bajo el cambio `investigacion-fuentes-prioritarias`.
+
+## Último Realizado [2026-08-21]
+- **Revisión y Actualización de Documentación:** Se actualizaron todos los archivos MD del proyecto (`alex.md`, `memory.md`, `DESIGN.md`, `agents.md`) para reflejar el estado actual de la aplicación en la rama `casa`.
+- **Estado actual de la app:** La rama `casa` está activa y contiene cambios sin commitear en `index.html`, `script.js`, `server.js` y `style.css`. Se añadió el script `reiniciar.sh`.
+- **Agente utilizado:** Antigravity (Google DeepMind) — Claude Sonnet 4.6 con Thinking.
+- **OpenSpec activo:** Sistema OpenSpec integrado en `.agent/skills/` con skills: `openspec-propose`, `openspec-apply-change`, `openspec-explore`, `openspec-archive-change`, `openspec-update-change`, `openspec-sync-specs`.
+
 ## Último Realizado [2026-08-09]
 - **Botón Copiar Texto Plano en FB:** Se agregó un nuevo botón "📄 Texto Plano" en la pestaña de Facebook. Este botón limpia el contenido del editor eliminando la sintaxis Markdown básica y las etiquetas especiales de estilo Unicode (`{s}`, `{f}`, etc.), permitiendo copiar el borrador sin formato a través de la API del portapapeles.
 

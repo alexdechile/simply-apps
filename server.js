@@ -83,6 +83,56 @@ app.post('/save-to-vault', (req, res) => {
     });
 });
 
+// Endpoint para listar posts del Vault
+app.get('/vault/posts', (req, res) => {
+    const vaultPath = '/home/alexdechile/vault';
+    const postsPath = path.join(vaultPath, 'posts');
+    
+    try {
+        if (!fs.existsSync(postsPath)) {
+            return res.status(404).json({ error: 'Posts directory not found' });
+        }
+        
+        const files = fs.readdirSync(postsPath)
+            .filter(file => file.endsWith('.md'))
+            .map(file => {
+                const filePath = path.join(postsPath, file);
+                const stat = fs.statSync(filePath);
+                return {
+                    name: file,
+                    path: `/posts/${file}`,
+                    size: stat.size,
+                    mtime: stat.mtime
+                };
+            })
+            .sort((a, b) => b.mtime - a.mtime);
+        
+        res.json({ posts: files });
+    } catch (e) {
+        console.error('[Vault] Error listing posts:', e.message);
+        res.status(500).json({ error: 'Error listing posts' });
+    }
+});
+
+// Endpoint para obtener contenido de un post específico del Vault
+app.get('/vault/post/:filename', (req, res) => {
+    const { filename } = req.params;
+    const vaultPath = '/home/alexdechile/vault';
+    const postPath = path.join(vaultPath, 'posts', filename);
+    
+    try {
+        if (!fs.existsSync(postPath)) {
+            return res.status(404).json({ error: 'Post not found' });
+        }
+        
+        const content = fs.readFileSync(postPath, 'utf8');
+        res.json({ content, path: postPath });
+    } catch (e) {
+        console.error('[Vault] Error reading post:', e.message);
+        res.status(500).json({ error: 'Error reading post' });
+    }
+});
+
 // Endpoint para obtener el contenido de fuentes.md
 app.get('/api/fuentes', (req, res) => {
     const fuentesPath = path.join(__dirname, 'archivos', 'fuentes.md');
@@ -114,16 +164,46 @@ app.post('/api/fuentes', (req, res) => {
     }
 });
 
+// ── STICKIES (Notas de mejora sobre el diagrama) ──────────────────────────
+const STICKIES_PATH = path.join(__dirname, 'archivos', 'stickies.json');
+
+app.get('/api/stickies', (req, res) => {
+    try {
+        if (!fs.existsSync(STICKIES_PATH)) {
+            return res.json([]);
+        }
+        const data = JSON.parse(fs.readFileSync(STICKIES_PATH, 'utf8'));
+        res.json(data);
+    } catch (e) {
+        console.error('[Stickies] Error al leer:', e.message);
+        res.json([]);
+    }
+});
+
+app.post('/api/stickies', (req, res) => {
+    try {
+        const stickies = req.body;
+        if (!Array.isArray(stickies)) return res.status(400).json({ error: 'Se esperaba un array' });
+        fs.writeFileSync(STICKIES_PATH, JSON.stringify(stickies, null, 2), 'utf8');
+        console.log(`[Stickies] Guardados ${stickies.length} stickies`);
+        res.json({ ok: true, count: stickies.length });
+    } catch (e) {
+        console.error('[Stickies] Error al guardar:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.post('/research', (req, res) => {
-    const { topic, depth } = req.body;
+    const { topic, depth, category } = req.body;
     if (!topic) return res.status(400).send('No topic provided');
 
     const pythonBin = path.join(__dirname, 'venv', 'bin', 'python3');
     const scriptPath = path.join(__dirname, 'researcher.py');
     
-    console.log(`Researching topic: ${topic} (Depth: ${depth || 'sencilla'})`);
+    console.log(`Researching topic: ${topic} (Depth: ${depth || 'sencilla'}, Category: ${category || 'general'})`);
     
-    const command = `${pythonBin} "${scriptPath}" "${topic.replace(/"/g, '\\"')}" "${depth || 'sencilla'}"`;
+    const safeCategory = category ? category.replace(/"/g, '\\"') : '';
+    const command = `${pythonBin} "${scriptPath}" "${topic.replace(/"/g, '\\"')}" "${depth || 'sencilla'}" "${safeCategory}"`;
     
     exec(command, (error, stdout, stderr) => {
         if (error) {
@@ -134,7 +214,15 @@ app.post('/research', (req, res) => {
         if (stderr) console.log(`Python Logs: ${stderr}`);
         
         console.log(`Research completed for: ${topic}`);
-        res.send({ content: stdout });
+        
+        let resultData;
+        try {
+            resultData = JSON.parse(stdout);
+        } catch (e) {
+            console.error(`Error parsing python json output: ${e}`);
+            resultData = { full_report: stdout, links: [] };
+        }
+        res.send(resultData);
     });
 });
 
@@ -579,6 +667,130 @@ app.post('/ai-suggest', (req, res) => {
         console.log(`[AI Suggest] Success: Suggestions generated`);
         res.send({ content: suggestion });
     });
+});
+
+app.post('/ai-thread', (req, res) => {
+    const { content, model } = req.body;
+    if (!content) return res.status(400).send('No content provided');
+
+    console.log(`[AI Thread] Splitting text into thread (length: ${content.length})`);
+
+    const systemPrompt = "Actúa como un redactor experto en hilos de X (Twitter). Tu misión es fragmentar el texto proporcionado en un hilo ordenado y coherente de tweets numerados (por ejemplo: '1/', '2/', etc.). Cada fragmento DEBE tener un máximo de 280 caracteres y representar una idea completa y fácil de leer. No resumas el texto completo en un solo tweet, divídelo fluidamente. Devuelve ÚNICAMENTE los tweets numerados, separados entre sí por una línea en blanco, sin comentarios ni explicaciones adicionales.";
+
+    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
+    const aichatModel = model || 'nvidia:meta/llama-3.3-70b-instruct';
+
+    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt]);
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => { stdout += data.toString(); });
+    child.stderr.on('data', (data) => { stderr += data.toString(); });
+
+    child.on('close', (code) => {
+        if (code !== 0) {
+            console.error(`[AI Thread] Error code ${code}: ${stderr}`);
+            return res.status(500).send(stderr || 'Error al generar hilo con aichat');
+        }
+
+        let threadText = stdout.trim();
+        if (threadText.startsWith('```')) {
+            threadText = threadText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
+        }
+
+        console.log(`[AI Thread] Success: Thread generated`);
+        res.send({ content: threadText });
+    });
+
+    child.stdin.write(content);
+    child.stdin.end();
+});
+
+app.post('/ai-copywrite', (req, res) => {
+    const { content, model, formula } = req.body;
+    if (!content) return res.status(400).send('No content provided');
+    if (!formula) return res.status(400).send('No formula provided');
+
+    console.log(`[AI Copywrite] Applying formula ${formula} (length: ${content.length})`);
+
+    let formulaPrompt = "";
+    if (formula === 'pas') {
+        formulaPrompt = "Reescribe el texto usando la estructura PAS (Problema, Agitación, Solución). Usa encabezados claros en Markdown (por ejemplo, '### Problema', '### Agitación', '### Solución') para cada sección.";
+    } else {
+        formulaPrompt = "Reescribe el texto usando la estructura AIDA (Atención, Interés, Deseo, Acción). Usa encabezados claros en Markdown (por ejemplo, '### Atención', '### Interés', '### Deseo', '### Acción') para cada sección.";
+    }
+
+    const systemPrompt = `Actúa como un copywriter profesional de alta conversión. Tu misión es reescribir el texto proporcionado.
+${formulaPrompt}
+Devuelve ÚNICAMENTE el texto reescrito estructurado, sin introducciones, saludos ni comentarios adicionales, y sin envolverlo en bloques de código markdown.`;
+
+    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
+    const aichatModel = model || 'nvidia:meta/llama-3.3-70b-instruct';
+
+    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt]);
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => { stdout += data.toString(); });
+    child.stderr.on('data', (data) => { stderr += data.toString(); });
+
+    child.on('close', (code) => {
+        if (code !== 0) {
+            console.error(`[AI Copywrite] Error code ${code}: ${stderr}`);
+            return res.status(500).send(stderr || 'Error al aplicar copywriting con aichat');
+        }
+
+        let copyText = stdout.trim();
+        if (copyText.startsWith('```')) {
+            copyText = copyText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
+        }
+
+        console.log(`[AI Copywrite] Success: Copywriting applied`);
+        res.send({ content: copyText });
+    });
+
+    child.stdin.write(content);
+    child.stdin.end();
+});
+
+app.post('/ai-hooks', (req, res) => {
+    const { content, model } = req.body;
+    if (!content) return res.status(400).send('No content provided');
+
+    console.log(`[AI Hooks] Generating hooks (length: ${content.length})`);
+
+    const systemPrompt = "Actúa como un estratega de contenido viral y copywriter. Tu misión es leer el texto provisto y proponer 3 ganchos (hooks) o líneas de apertura sumamente llamativas y optimizadas para redes sociales basadas en el contenido. Enuméralas del 1 al 3. Devuelve ÚNICAMENTE las 3 propuestas numeradas en formato de lista Markdown, sin preámbulos, notas ni comentarios adicionales.";
+
+    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
+    const aichatModel = model || 'nvidia:meta/llama-3.3-70b-instruct';
+
+    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt]);
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => { stdout += data.toString(); });
+    child.stderr.on('data', (data) => { stderr += data.toString(); });
+
+    child.on('close', (code) => {
+        if (code !== 0) {
+            console.error(`[AI Hooks] Error code ${code}: ${stderr}`);
+            return res.status(500).send(stderr || 'Error al generar hooks con aichat');
+        }
+
+        let hooksText = stdout.trim();
+        if (hooksText.startsWith('```')) {
+            hooksText = hooksText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
+        }
+
+        console.log(`[AI Hooks] Success: Hooks generated`);
+        res.send({ content: hooksText });
+    });
+
+    child.stdin.write(content);
+    child.stdin.end();
 });
 
 app.post('/export', (req, res) => {
