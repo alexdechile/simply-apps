@@ -8,8 +8,8 @@ El sistema consta de:
 - **Frontend**: Aplicación web de una sola página (SPA) con Vanilla JS, EasyMDE para edición Markdown y WaveSurfer.js para audio.
 - **Backend (Express)**: Servidor Node.js (Puerto 1717) que sirve el frontend y expone endpoints (`/ask-ai`, `/research`, `/ai-polish`, etc.).
 - **Procesamiento AI**: 
-  - Consultas a LLMs a través del endpoint compatible de DeepInfra.
-  - Ejecución de CLI `aichat` local (Rust) para pulido y sugerencias.
+  - Consultas a LLMs a través de Cloudflare Workers AI Proxy (`chat.comerza.cl` / `workers.dev` con fallback en cascada a DeepInfra/OpenRouter).
+  - Modelos eficientes y gratuitos en el Edge: `@cf/meta/llama-3.1-8b-instruct` (Pulido/Adorno/Pensar) y `@cf/gemma-2-9b-it` (Sugerir).
   - Conexión a modelo remoto con Ollama (hal2026).
 - **Análisis y Scraping**:
   - `simply-analyzer`: Motor en Rust para análisis de métricas avanzadas de texto.
@@ -24,7 +24,7 @@ El sistema consta de:
 ## Funcionalidades Principales
 - **Editor Markdown en tiempo real**: Con previsualización.
 - **Barra de formato Unicode**: Botones para aplicar estilos (Fraktur, Script, Double, etc.) con etiquetas personalizadas (`{f}...{/f}`).
-- **Asistencia IA (Pulir y Sugerir)**: A través de `aichat`, permitiendo corregir ortografía y sugerir ideas/párrafos adicionales.
+- **Asistencia IA (Pulir y Sugerir)**: A través del proxy de Workers AI en Cloudflare, permitiendo corregir ortografía y sugerir ideas/párrafos de forma rápida y gratuita.
 - **Decoración (Sal y Pimienta)**: Decoración de textos con emojis con tres niveles interactivos en frontend (Sutil, Equilibrado e Intenso).
 - **Motor de Investigación Inteligente (Research)**: Flujo de 4 pasos (Planificación, Configuración, Scraping, Síntesis) con validación de fuentes desde `fuentes.md`.
 - **Post Musical**: Buscador de canciones integrando Wikipedia y YouTube Music para armar posteos automatizados.
