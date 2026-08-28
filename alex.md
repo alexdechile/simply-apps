@@ -1,6 +1,16 @@
 # Bitácora de Alex - Simply Apps
 
+## Último Realizado [2026-08-27]
+- **Migración a OpenRouter (Optimización de Costos y Estabilidad):**
+  - **Diagnóstico:** El modelo `meta/llama-3.3-70b-instruct` fue marcado como EOL por NVIDIA, y las pruebas directas indicaron que la API key de Nvidia del usuario se quedó sin créditos (error 404 de cuenta).
+  - **Recuperación de API Key:** Se localizó la API key de OpenRouter en `/home/alexdechile/Escritorio/mira/.listenv`.
+  - **Integración de OpenRouter:** Se configuró OpenRouter en `~/.config/aichat/config.yaml` agregando el cliente y varios modelos, incluyendo modelos 100% gratuitos (`google/gemma-2-9b-it:free`, `meta-llama/llama-3-8b-instruct:free`, `openrouter/auto:free`).
+  - **Modelo Predeterminado:** Se estableció `openrouter:meta-llama/llama-3.3-70b-instruct` como modelo predeterminado de la aplicación en `server.js`, `script.js` y `config.yaml`. Se removió el sufijo `:floor` para evitar que OpenRouter rutee hacia proveedores saturados de bajo costo (los cuales causaban error de "Model busy, retry later"), priorizando ahora la estabilidad de los proveedores estándar de OpenRouter.
+
 ## Último Realizado [2026-08-25]
+- **Corrección de Artículos Cortados / Truncamiento en IA:**
+  - **Backend:** Se migraron los endpoints `/ai-polish` y `/ai-suggest` de usar `exec` con pipes de shell a `spawn` pasándole el contenido vía `stdin.write()`. Esto evita que textos largos o con caracteres especiales de bash se trunquen o causen errores de escape.
+  - **Configuración de Modelos (`config.yaml`):** Se agregó el parámetro `max_output_tokens: 8192` para todos los modelos de `nvidia` y `deepinfra` en el archivo de configuración global de `aichat` (`~/.config/aichat/config.yaml`), evitando que los proveedores limiten y corten las respuestas de artículos extensos a valores por defecto bajos (ej: 1024 tokens).
 - **Rediseño del Layout de la Toolbar & Estética:**
   - **Fila Superior:** Logo `SIMPLY APPS` centrado en una sola línea.
   - **Fila Inferior:** Dividida en 3 columnas de flexbox balanceadas:

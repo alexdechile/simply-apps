@@ -580,7 +580,7 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
 
   // --- SELECCION DE MODELO IA ---
   function getSelectedModel() {
-    return localStorage.getItem('simply-ai-model') || 'nvidia:meta/llama-3.3-70b-instruct';
+    return localStorage.getItem('simply-ai-model') || 'openrouter:meta-llama/llama-3.3-70b-instruct';
   }
 
   async function initModelSelector() {
@@ -597,6 +597,17 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
       const res = await fetch('ai-models');
       if (!res.ok) throw new Error('Error al cargar modelos');
       const { models } = await res.json();
+
+      // Validar si el modelo guardado existe en los modelos activos
+      let activeModel = savedModel;
+      const modelExists = models.some(m => m.fullId === savedModel);
+      if (!modelExists && models.length > 0) {
+        console.warn(`[AI Selector] El modelo guardado '${savedModel}' ya no está disponible. Restableciendo al default.`);
+        localStorage.removeItem('simply-ai-model');
+        activeModel = getSelectedModel();
+        const activeClient = activeModel.split(':')[0];
+        label.textContent = activeClient.charAt(0).toUpperCase() + activeClient.slice(1);
+      }
 
       // Agrupar por cliente
       const groups = {};

@@ -305,7 +305,7 @@ YouTube Music: ${rawData.youtube_music || ''}`;
                     'Authorization': `Bearer ${DEEPINFRA_API_KEY}`
                 },
                 body: JSON.stringify({
-                    model: "nvidia/Llama-3.1-Nemotron-70B-Instruct",
+                    model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
                     messages: [
                         { role: "system", content: systemPrompt },
                         { role: "user", content: userContent }
@@ -403,7 +403,7 @@ ${JSON.stringify(researchData, null, 2)}`;
                     'Authorization': `Bearer ${DEEPINFRA_API_KEY}`
                 },
                 body: JSON.stringify({
-                    model: "nvidia/Llama-3.1-Nemotron-70B-Instruct",
+                    model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
                     messages: [
                         { role: "system", content: systemPrompt },
                         { role: "user", content: userContent }
@@ -479,7 +479,7 @@ ${researchData}`;
                     'Authorization': `Bearer ${DEEPINFRA_API_KEY}`
                 },
                 body: JSON.stringify({
-                    model: "nvidia/Llama-3.1-Nemotron-70B-Instruct",
+                    model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
                     messages: [
                         { role: "system", content: systemPrompt },
                         { role: "user", content: userContent }
@@ -557,20 +557,30 @@ app.post('/ai-polish', (req, res) => {
 
     console.log(`[AI Polish] Polishing text (length: ${content.length})`);
 
-    const escapedContent = content.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
-    
     const systemPrompt = "Actúa como un editor experto y corrector de estilo. Tu misión es corregir la ortografía, gramática y mejorar la redacción del texto proporcionado, manteniendo estrictamente el estilo original (no cambies el tono ni la intención). Devuelve ÚNICAMENTE el texto corregido, sin explicaciones ni preámbulos.";
 
     const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const aichatModel = model || 'nvidia:meta/llama-3.3-70b-instruct';
-    const command = `echo "${escapedContent}" | ${aichatBin} -S --model ${aichatModel} --prompt "${systemPrompt}"`;
+    const aichatModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
 
-    exec(command, { maxBuffer: 1024 * 1024 * 2 }, (error, stdout, stderr) => {
-        if (error) {
-            console.error(`[AI Polish] Error: ${error}`);
+    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt]);
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => {
+        stdout += data.toString();
+    });
+
+    child.stderr.on('data', (data) => {
+        stderr += data.toString();
+    });
+
+    child.on('close', (code) => {
+        if (code !== 0) {
+            console.error(`[AI Polish] Error code ${code}: ${stderr}`);
             return res.status(500).send(stderr || 'Error al pulir el texto con aichat');
         }
-        
+
         let polishedText = stdout.trim();
         if (polishedText.startsWith('```')) {
             polishedText = polishedText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
@@ -579,6 +589,9 @@ app.post('/ai-polish', (req, res) => {
         console.log(`[AI Polish] Success: Text polished`);
         res.send({ content: polishedText });
     });
+
+    child.stdin.write(content);
+    child.stdin.end();
 });
 
 app.post('/ai-decorate', (req, res) => {
@@ -603,7 +616,7 @@ ${levelPrompt}
 IMPORTANTE: NO cambies el significado, ni la estructura base, ni el mensaje del texto original. Solo añade la capa visual y decorativa (emojis, negritas, etc.). Devuelve ÚNICAMENTE el texto decorado, sin ningún comentario, preámbulo ni bloque de código markdown.`;
 
     const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const aichatModel = model || 'nvidia:meta/llama-3.3-70b-instruct';
+    const aichatModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
 
     // Ejecución segura usando spawn para evitar errores de escape de bash
     const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt]);
@@ -645,20 +658,30 @@ app.post('/ai-suggest', (req, res) => {
 
     console.log(`[AI Suggest] Generating suggestions (length: ${content.length})`);
 
-    const escapedContent = content.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
-    
     const systemPrompt = "Eres un asistente creativo y estratega de contenido. Lee el texto que el usuario ha escrito y sugiere 2 o 3 ideas adicionales, ángulos nuevos o párrafos que podrían continuar o enriquecer el post. Mantén el tono y estilo detectado. Sé breve y directo. Devuelve solo las sugerencias en formato markdown, usando viñetas si es necesario.";
 
     const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const aichatModel = model || 'nvidia:meta/llama-3.3-70b-instruct';
-    const command = `echo "${escapedContent}" | ${aichatBin} -S --model ${aichatModel} --prompt "${systemPrompt}"`;
+    const aichatModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
 
-    exec(command, { maxBuffer: 1024 * 1024 * 2 }, (error, stdout, stderr) => {
-        if (error) {
-            console.error(`[AI Suggest] Error: ${error}`);
+    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt]);
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => {
+        stdout += data.toString();
+    });
+
+    child.stderr.on('data', (data) => {
+        stderr += data.toString();
+    });
+
+    child.on('close', (code) => {
+        if (code !== 0) {
+            console.error(`[AI Suggest] Error: ${stderr}`);
             return res.status(500).send(stderr || 'Error al obtener sugerencias con aichat');
         }
-        
+
         let suggestion = stdout.trim();
         if (suggestion.startsWith('```')) {
             suggestion = suggestion.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
@@ -667,6 +690,9 @@ app.post('/ai-suggest', (req, res) => {
         console.log(`[AI Suggest] Success: Suggestions generated`);
         res.send({ content: suggestion });
     });
+
+    child.stdin.write(content);
+    child.stdin.end();
 });
 
 app.post('/ai-thread', (req, res) => {
@@ -678,7 +704,7 @@ app.post('/ai-thread', (req, res) => {
     const systemPrompt = "Actúa como un redactor experto en hilos de X (Twitter). Tu misión es fragmentar el texto proporcionado en un hilo ordenado y coherente de tweets numerados (por ejemplo: '1/', '2/', etc.). Cada fragmento DEBE tener un máximo de 280 caracteres y representar una idea completa y fácil de leer. No resumas el texto completo en un solo tweet, divídelo fluidamente. Devuelve ÚNICAMENTE los tweets numerados, separados entre sí por una línea en blanco, sin comentarios ni explicaciones adicionales.";
 
     const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const aichatModel = model || 'nvidia:meta/llama-3.3-70b-instruct';
+    const aichatModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
 
     const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt]);
 
@@ -726,7 +752,7 @@ ${formulaPrompt}
 Devuelve ÚNICAMENTE el texto reescrito estructurado, sin introducciones, saludos ni comentarios adicionales, y sin envolverlo en bloques de código markdown.`;
 
     const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const aichatModel = model || 'nvidia:meta/llama-3.3-70b-instruct';
+    const aichatModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
 
     const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt]);
 
@@ -764,7 +790,7 @@ app.post('/ai-hooks', (req, res) => {
     const systemPrompt = "Actúa como un estratega de contenido viral y copywriter. Tu misión es leer el texto provisto y proponer 3 ganchos (hooks) o líneas de apertura sumamente llamativas y optimizadas para redes sociales basadas en el contenido. Enuméralas del 1 al 3. Devuelve ÚNICAMENTE las 3 propuestas numeradas en formato de lista Markdown, sin preámbulos, notas ni comentarios adicionales.";
 
     const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const aichatModel = model || 'nvidia:meta/llama-3.3-70b-instruct';
+    const aichatModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
 
     const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt]);
 
@@ -822,7 +848,7 @@ app.post('/export', (req, res) => {
 
 app.post('/ask-ai', async (req, res) => {
     const { systemPrompt, userContent, model } = req.body;
-    const selectedModel = model || "nvidia/Llama-3.1-Nemotron-70B-Instruct";
+    const selectedModel = model || "meta-llama/Llama-3.3-70B-Instruct-Turbo";
     
     try {
         console.log(`[AI Request] Model: ${selectedModel}`);
