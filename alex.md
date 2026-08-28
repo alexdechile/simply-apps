@@ -4,7 +4,9 @@
 - **Integración Inicial de la API de IA Serverless (`chat.comerza.cl`):**
   - **Configuración de Variables:** Se añadieron `COMERZA_SECRET_TOKEN` y `AI_API_URL` al archivo `.env` del proyecto.
   - **Código Servidor:** Se modificó `server.js` para inicializar el token de Comerza y la URL del proxy de IA.
-  - **Prueba Tangible (`/ask-ai` y `/ai-decorate`):** Se actualizaron las rutas `/ask-ai` y `/ai-decorate` para redirigir las peticiones directamente al proxy de Cloudflare usando modelos optimizados y gratuitos (`@cf/meta/llama-3.1-8b-instruct`), eliminando el costo operativo del flujo de edición y adorno del texto.
+  - **Migración de Endpoints Clave (`/ask-ai`, `/ai-decorate`, `/ai-polish` y `/ai-suggest`):**
+    - Se migraron los endpoints de edición del editor (`✨ Pulir`, `💡 Sugerir`, `🧠 Pensar`, `🧂 Decorar`) para que utilicen la API proxy de Cloudflare en vez de ejecutar comandos locales de `aichat` o APIs de pago externas.
+    - Se mapearon a modelos eficientes y gratuitos en Workers AI: `@cf/meta/llama-3.1-8b-instruct` para redacción y estilismo, y `@cf/gemma-2-9b-it` para la generación creativa de sugerencias.
   - **Ajustes de Formato en Decoración:** Se refinó el prompt del sistema de `/ai-decorate` para prohibir caracteres matemáticos Unicode estilizados y forzar negritas nativas en formato Markdown estándar (`**texto**`).
   - **Panel de Estadísticas (Tokens y Neuronas):** Se agregaron contadores en tiempo real al panel de estadísticas inferior de la app. Ahora muestra los **Tokens aproximados** del texto (1 token ≈ 4 caracteres) y las **Neuronas estimadas** que consumiría procesar dicho texto en Cloudflare Workers AI (tasa de 0.08 neuronas por cada 1,000 tokens para Llama 3.1 8B).
   - **Fallback Automático:** La integración mantiene la robustez gracias al fallback en cascada que ofrece el proxy hacia DeepInfra y OpenRouter si el servicio del Edge llegara a fallar.

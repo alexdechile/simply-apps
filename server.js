@@ -554,7 +554,7 @@ app.get('/ai-models', (req, res) => {
     }
 });
 
-app.post('/ai-polish', (req, res) => {
+app.post('/ai-polish', async (req, res) => {
     const { content, model } = req.body;
     if (!content) return res.status(400).send('No content provided');
 
@@ -562,39 +562,51 @@ app.post('/ai-polish', (req, res) => {
 
     const systemPrompt = "Actúa como un editor experto y corrector de estilo. Tu misión es corregir la ortografía, gramática y mejorar la redacción del texto proporcionado, manteniendo estrictamente el estilo original (no cambies el tono ni la intención). Devuelve ÚNICAMENTE el texto corregido, sin explicaciones ni preámbulos.";
 
-    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const aichatModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
+    let selectedModel = model || "@cf/meta/llama-3.1-8b-instruct";
+    if (selectedModel.includes('llama-3.3-70b-instruct') || selectedModel === 'openrouter:meta-llama/llama-3.3-70b-instruct') {
+        selectedModel = "@cf/meta/llama-3.1-8b-instruct";
+    }
 
-    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt]);
+    try {
+        console.log(`[AI Polish Proxy Request] URL: ${AI_API_URL}, Model: ${selectedModel}`);
+        const response = await fetch(AI_API_URL, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Bearer ${COMERZA_SECRET_TOKEN}` 
+            },
+            body: JSON.stringify({
+                model: selectedModel,
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: content }
+                ],
+                temperature: 0.3, // Temperatura más baja para mayor precisión ortográfica
+                max_tokens: 4096
+            })
+        });
 
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (data) => {
-        stdout += data.toString();
-    });
-
-    child.stderr.on('data', (data) => {
-        stderr += data.toString();
-    });
-
-    child.on('close', (code) => {
-        if (code !== 0) {
-            console.error(`[AI Polish] Error code ${code}: ${stderr}`);
-            return res.status(500).send(stderr || 'Error al pulir el texto con aichat');
+        const data = await response.json();
+        if (!response.ok) {
+            const errorLog = `[AI Polish Proxy Error] Status: ${response.status}, Data: ${JSON.stringify(data)}\n`;
+            fs.appendFileSync(path.join(__dirname, 'simply.log'), errorLog);
+            console.error(errorLog.trim());
+            return res.status(response.status).send(data.error ? data.error.message : 'Error from IA');
         }
 
-        let polishedText = stdout.trim();
+        let polishedText = data.choices[0].message.content.trim();
         if (polishedText.startsWith('```')) {
             polishedText = polishedText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
         }
 
         console.log(`[AI Polish] Success: Text polished`);
         res.send({ content: polishedText });
-    });
-
-    child.stdin.write(content);
-    child.stdin.end();
+    } catch (err) {
+        const errorLog = `[AI Polish Proxy Exception] Error: ${err.message}\n`;
+        fs.appendFileSync(path.join(__dirname, 'simply.log'), errorLog);
+        console.error(errorLog.trim());
+        res.status(500).send('Internal Server Error calling IA');
+    }
 });
 
 app.post('/ai-decorate', async (req, res) => {
@@ -669,7 +681,7 @@ IMPORTANTE:
     }
 });
 
-app.post('/ai-suggest', (req, res) => {
+app.post('/ai-suggest', async (req, res) => {
     const { content, model } = req.body;
     if (!content) return res.status(400).send('No content provided');
 
@@ -677,39 +689,51 @@ app.post('/ai-suggest', (req, res) => {
 
     const systemPrompt = "Eres un asistente creativo y estratega de contenido. Lee el texto que el usuario ha escrito y sugiere 2 o 3 ideas adicionales, ángulos nuevos o párrafos que podrían continuar o enriquecer el post. Mantén el tono y estilo detectado. Sé breve y directo. Devuelve solo las sugerencias en formato markdown, usando viñetas si es necesario.";
 
-    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const aichatModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
+    let selectedModel = model || "@cf/gemma-2-9b-it";
+    if (selectedModel.includes('llama-3.3-70b-instruct') || selectedModel === 'openrouter:meta-llama/llama-3.3-70b-instruct') {
+        selectedModel = "@cf/gemma-2-9b-it"; // Usamos Gemma 2 9B por defecto para sugerencias creativas en CF
+    }
 
-    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt]);
+    try {
+        console.log(`[AI Suggest Proxy Request] URL: ${AI_API_URL}, Model: ${selectedModel}`);
+        const response = await fetch(AI_API_URL, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Bearer ${COMERZA_SECRET_TOKEN}` 
+            },
+            body: JSON.stringify({
+                model: selectedModel,
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: content }
+                ],
+                temperature: 0.7,
+                max_tokens: 2048
+            })
+        });
 
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (data) => {
-        stdout += data.toString();
-    });
-
-    child.stderr.on('data', (data) => {
-        stderr += data.toString();
-    });
-
-    child.on('close', (code) => {
-        if (code !== 0) {
-            console.error(`[AI Suggest] Error: ${stderr}`);
-            return res.status(500).send(stderr || 'Error al obtener sugerencias con aichat');
+        const data = await response.json();
+        if (!response.ok) {
+            const errorLog = `[AI Suggest Proxy Error] Status: ${response.status}, Data: ${JSON.stringify(data)}\n`;
+            fs.appendFileSync(path.join(__dirname, 'simply.log'), errorLog);
+            console.error(errorLog.trim());
+            return res.status(response.status).send(data.error ? data.error.message : 'Error from IA');
         }
 
-        let suggestion = stdout.trim();
+        let suggestion = data.choices[0].message.content.trim();
         if (suggestion.startsWith('```')) {
             suggestion = suggestion.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
         }
 
         console.log(`[AI Suggest] Success: Suggestions generated`);
         res.send({ content: suggestion });
-    });
-
-    child.stdin.write(content);
-    child.stdin.end();
+    } catch (err) {
+        const errorLog = `[AI Suggest Proxy Exception] Error: ${err.message}\n`;
+        fs.appendFileSync(path.join(__dirname, 'simply.log'), errorLog);
+        console.error(errorLog.trim());
+        res.status(500).send('Internal Server Error calling IA');
+    }
 });
 
 app.post('/ai-thread', (req, res) => {
