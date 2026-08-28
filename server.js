@@ -597,7 +597,7 @@ app.post('/ai-polish', (req, res) => {
     child.stdin.end();
 });
 
-app.post('/ai-decorate', (req, res) => {
+app.post('/ai-decorate', async (req, res) => {
     const { content, model, level } = req.body;
     if (!content) return res.status(400).send('No content provided');
 
@@ -616,43 +616,57 @@ app.post('/ai-decorate', (req, res) => {
     const systemPrompt = `Actúa como un experto en estilismo de redes sociales. Tu misión es añadir 'sal y pimienta' (estilo y decoración visual) al texto proporcionado.
 ${levelPrompt}
 
-IMPORTANTE: NO cambies el significado, ni la estructura base, ni el mensaje del texto original. Solo añade la capa visual y decorativa (emojis, negritas, etc.). Devuelve ÚNICAMENTE el texto decorado, sin ningún comentario, preámbulo ni bloque de código markdown.`;
+IMPORTANTE:
+1. NO cambies el significado, ni la estructura base, ni el mensaje del texto original.
+2. Para aplicar negritas, usa SIEMPRE el formato Markdown estándar (**texto**) y jamás utilices caracteres Unicode estilizados o matemáticos (como 𝐃, 𝐞, 𝐬, 𝐜).
+3. Solo añade la capa visual y decorativa (emojis, negritas, etc.).
+4. Devuelve ÚNICAMENTE el texto decorado, sin ningún comentario ni preámbulo.`;
 
-    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const aichatModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
+    let selectedModel = model || "@cf/meta/llama-3.1-8b-instruct";
+    if (selectedModel.includes('llama-3.3-70b-instruct') || selectedModel === 'openrouter:meta-llama/llama-3.3-70b-instruct') {
+        selectedModel = "@cf/meta/llama-3.1-8b-instruct";
+    }
 
-    // Ejecución segura usando spawn para evitar errores de escape de bash
-    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt]);
+    try {
+        console.log(`[AI Decorate Proxy Request] URL: ${AI_API_URL}, Model: ${selectedModel}`);
+        const response = await fetch(AI_API_URL, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Bearer ${COMERZA_SECRET_TOKEN}` 
+            },
+            body: JSON.stringify({
+                model: selectedModel,
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: content }
+                ],
+                temperature: 0.7,
+                max_tokens: 4096
+            })
+        });
 
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (data) => {
-        stdout += data.toString();
-    });
-
-    child.stderr.on('data', (data) => {
-        stderr += data.toString();
-    });
-
-    child.on('close', (code) => {
-        if (code !== 0) {
-            console.error(`[AI Decorate] Error code ${code}: ${stderr}`);
-            return res.status(500).send(stderr || 'Error al decorar el texto con aichat');
+        const data = await response.json();
+        if (!response.ok) {
+            const errorLog = `[AI Decorate Proxy Error] Status: ${response.status}, Data: ${JSON.stringify(data)}\n`;
+            fs.appendFileSync(path.join(__dirname, 'simply.log'), errorLog);
+            console.error(errorLog.trim());
+            return res.status(response.status).send(data.error ? data.error.message : 'Error from IA');
         }
 
-        let decoratedText = stdout.trim();
+        let decoratedText = data.choices[0].message.content.trim();
         if (decoratedText.startsWith('```')) {
             decoratedText = decoratedText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
         }
 
         console.log(`[AI Decorate] Success: Text decorated`);
         res.send({ content: decoratedText });
-    });
-
-    // Escribir el contenido en stdin del proceso aichat
-    child.stdin.write(content);
-    child.stdin.end();
+    } catch (err) {
+        const errorLog = `[AI Decorate Proxy Exception] Error: ${err.message}\n`;
+        fs.appendFileSync(path.join(__dirname, 'simply.log'), errorLog);
+        console.error(errorLog.trim());
+        res.status(500).send('Internal Server Error calling IA');
+    }
 });
 
 app.post('/ai-suggest', (req, res) => {
