@@ -19,7 +19,10 @@ const yaml = require('js-yaml');
 
 // Configuración de IA (DeepInfra) desde variable de entorno
 const DEEPINFRA_API_KEY = (process.env.DEEPINFRA_API_KEY || '').trim();
-const logMsg = `[Config] API Key: ${DEEPINFRA_API_KEY ? 'Cargada (L:' + DEEPINFRA_API_KEY.length + ', ' + DEEPINFRA_API_KEY.substring(0,3) + '...' + DEEPINFRA_API_KEY.slice(-3) + ')' : 'NO CARGADA'}\n`;
+const COMERZA_SECRET_TOKEN = (process.env.COMERZA_SECRET_TOKEN || 'comerza_sec_token_5a9d82f1b4').trim();
+const AI_API_URL = process.env.AI_API_URL || 'https://chat.comerza.cl/v1/chat/completions';
+
+const logMsg = `[Config] API Key: ${DEEPINFRA_API_KEY ? 'Cargada (L:' + DEEPINFRA_API_KEY.length + ', ' + DEEPINFRA_API_KEY.substring(0,3) + '...' + DEEPINFRA_API_KEY.slice(-3) + ')' : 'NO CARGADA'} | Proxy: ${AI_API_URL}\n`;
 fs.appendFileSync(path.join(__dirname, 'simply.log'), logMsg);
 console.log(logMsg.trim());
 
@@ -848,15 +851,20 @@ app.post('/export', (req, res) => {
 
 app.post('/ask-ai', async (req, res) => {
     const { systemPrompt, userContent, model } = req.body;
-    const selectedModel = model || "meta-llama/Llama-3.3-70B-Instruct-Turbo";
+    
+    // Si viene el modelo pesado por defecto de DeepInfra, lo mapeamos al de Cloudflare para ahorrar costes.
+    let selectedModel = model || "meta-llama/Llama-3.3-70B-Instruct-Turbo";
+    if (selectedModel === "meta-llama/Llama-3.3-70B-Instruct-Turbo") {
+        selectedModel = "@cf/meta/llama-3.1-8b-instruct";
+    }
     
     try {
-        console.log(`[AI Request] Model: ${selectedModel}`);
-        const response = await fetch('https://api.deepinfra.com/v1/openai/chat/completions', {
+        console.log(`[AI Proxy Request] URL: ${AI_API_URL}, Model: ${selectedModel}`);
+        const response = await fetch(AI_API_URL, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json', 
-                'Authorization': `Bearer ${DEEPINFRA_API_KEY}` 
+                'Authorization': `Bearer ${COMERZA_SECRET_TOKEN}` 
             },
             body: JSON.stringify({
                 model: selectedModel,
@@ -871,7 +879,7 @@ app.post('/ask-ai', async (req, res) => {
 
         const data = await response.json();
         if (!response.ok) {
-            const errorLog = `[AI Error] Status: ${response.status}, Data: ${JSON.stringify(data)}\n`;
+            const errorLog = `[AI Proxy Error] Status: ${response.status}, Data: ${JSON.stringify(data)}\n`;
             fs.appendFileSync(path.join(__dirname, 'simply.log'), errorLog);
             console.error(errorLog.trim());
             return res.status(response.status).send(data.error ? data.error.message : 'Error from IA');

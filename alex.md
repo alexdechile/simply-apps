@@ -1,6 +1,13 @@
 # Bitácora de Alex - Simply Apps
 
-## Último Realizado [2026-08-27]
+## Último Realizado [2026-08-27 - Noche]
+- **Integración Inicial de la API de IA Serverless (`chat.comerza.cl`):**
+  - **Configuración de Variables:** Se añadieron `COMERZA_SECRET_TOKEN` y `AI_API_URL` al archivo `.env` del proyecto.
+  - **Código Servidor:** Se modificó `server.js` para inicializar el token de Comerza y la URL del proxy de IA.
+  - **Prueba Tangible (`/ask-ai`):** Se actualizó la ruta `/ask-ai` para redirigir las peticiones directamente a `chat.comerza.cl` usando el modelo gratuito y eficiente de Cloudflare Workers AI (`@cf/meta/llama-3.1-8b-instruct`), reduciendo a cero el costo operativo.
+  - **Fallback Automático:** La integración mantiene la robustez gracias al fallback en cascada que ofrece el proxy hacia DeepInfra y OpenRouter si el servicio del Edge llegara a fallar.
+
+## Último Realizado [2026-08-27 - Tarde]
 - **Migración a OpenRouter (Optimización de Costos y Estabilidad):**
   - **Diagnóstico:** El modelo `meta/llama-3.3-70b-instruct` fue marcado como EOL por NVIDIA, y las pruebas directas indicaron que la API key de Nvidia del usuario se quedó sin créditos (error 404 de cuenta).
   - **Recuperación de API Key:** Se localizó la API key de OpenRouter en `/home/alexdechile/Escritorio/mira/.listenv`.
