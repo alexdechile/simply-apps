@@ -9,9 +9,8 @@ Aplicación web para creación y adaptación de contenido multiplataforma (Faceb
 | Backend | Node.js + Express 5.x (`server.js`) |
 | Frontend | HTML5 + CSS3 + Vanilla JS (`index.html`, `style.css`, `script.js`) |
 | Editor | EasyMDE (CodeMirror) con tema oscuro |
-| Editor Legacy | Tiptap (`editor.js`) — no utilizado actualmente |
-| IA API | DeepInfra (OpenAI-compatible endpoint) |
-| IA Local | **aichat** (Rust-based CLI) para pulido de texto |
+| IA API (Proxy) | Cloudflare Workers AI Proxy (`chat.comerza.cl` / `workers.dev` con fallback a DeepInfra/OpenRouter) |
+| IA Serverless | Workers AI (`@cf/meta/llama-3.1-8b-instruct` y `@cf/gemma-2-9b-it`) para pulido, sugerencias y decoración visual |
 | Analizador | **simply-analyzer** (Rust nativo) para métricas avanzadas |
 | Motor de Búsqueda | DuckDuckGo HTML + Scrapling (Python) |
 | Exportación | Python (markdown, python-docx, pandas) |
@@ -24,14 +23,14 @@ Aplicación web para creación y adaptación de contenido multiplataforma (Faceb
 ```
 server.js
 ├── GET /                    → Sirve frontend estático
-├── POST /ask-ai             → Proxy a DeepInfra API
+├── POST /ask-ai             → Consulta a Cloudflare Workers AI Proxy (Llama 3.1 8B)
 ├── POST /research           → Ejecuta researcher.py (Scrapling)
 ├── POST /cancion/completo   → Ejecuta buscadores/cancion.py (post musical)
 ├── POST /tech/completo      → Post tecnológico con IA (DeepInfra)
 ├── POST /news/completo      → Post de noticias con IA (DeepInfra)
-├── POST /ai-polish          → Ejecuta aichat CLI (pulido de texto)
-├── POST /ai-suggest         → Ejecuta aichat CLI (sugerencia de ideas/párrafos)
-├── POST /ai-decorate        → Ejecuta aichat CLI (decoración con emojis)
+├── POST /ai-polish          → Consulta a Cloudflare Workers AI Proxy (Llama 3.1 8B)
+├── POST /ai-suggest         → Consulta a Cloudflare Workers AI Proxy (Gemma 2 9B)
+├── POST /ai-decorate        → Consulta a Cloudflare Workers AI Proxy (Llama 3.1 8B)
 ├── POST /ai-analyze         → Ejecuta simply-analyzer (Rust) para métricas
 ├── GET  /ai-models          → Lista de modelos IA disponibles
 ├── POST /export             → Ejecuta exporter.py (docx/xlsx/html)
@@ -49,8 +48,8 @@ script.js
 ├── Sistema de Tono (Coloquial / Comercial / Neutro)
 ├── Tabs (FB / X / LI / Config)
 ├── Barra de formato flotante (Unicode)
-├── Pulido de Texto (botón ✨ Pulir → aichat → inyección)
-├── Sugerir Ideas (botón 💡 Sugerir → aichat → apéndice)
+├── Pulido de Texto (botón ✨ Pulir → Proxy Workers AI → inyección)
+├── Sugerir Ideas (botón 💡 Sugerir → Proxy Workers AI → apéndice)
 ├── Análisis Real-time (Rust → lectura, densidad, keywords)
 ├── Modal de Investigación (3 pasos: Plan → Scrape → Síntesis)
 ├── Persistencia (localStorage)
@@ -79,12 +78,12 @@ exporter.py
 
 | Parámetro | Valor |
 |---|---|
-| Provider | DeepInfra |
-| Endpoint | `https://api.deepinfra.com/v1/openai/chat/completions` |
-| Modelo default | `nvidia/Llama-3.1-Nemotron-70B-Instruct` |
-| Max tokens | 2048 |
-| Temperature | 0.7 |
-| API Key | `DEEPINFRA_API_KEY` (`.env`) |
+| Provider Principal | Cloudflare Workers AI Proxy (`chat.comerza.cl` / `workers.dev`) |
+| Endpoint | `AI_API_URL` (`.env`) |
+| Modelos de Edición | `@cf/meta/llama-3.1-8b-instruct` (Pulido/Adorno/Pensar) y `@cf/gemma-2-9b-it` (Sugerir) |
+| Modelos Complejos | `meta-llama/Llama-3.3-70B-Instruct-Turbo` (Ruteado vía fallback a DeepInfra/OpenRouter) |
+| Seguridad | Bearer Token (`COMERZA_SECRET_TOKEN` en `.env`) |
+| Fallback en Edge | DeepInfra / OpenRouter en cascada ante errores de cuota o servicio |
 
 ## Timeouts
 | Capa | Timeout |
