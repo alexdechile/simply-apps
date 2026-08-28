@@ -317,9 +317,21 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
 
       if (el.charCount) el.charCount.textContent = md.length;
       const wordCountEl = document.getElementById('word-count');
+      const words = md.trim() ? md.trim().split(/\s+/).length : 0;
       if (wordCountEl) {
-        const words = md.trim() ? md.trim().split(/\s+/).length : 0;
         wordCountEl.textContent = words;
+      }
+
+      // Cálculo de Tokens y Neuronas (Cloudflare Workers AI - Llama 3.1 8B)
+      const tokenCountEl = document.getElementById('token-count');
+      const neuronCountEl = document.getElementById('neuron-count');
+      const tokens = md.trim() ? Math.round(md.length / 4) : 0;
+      if (tokenCountEl) {
+        tokenCountEl.textContent = tokens;
+      }
+      if (neuronCountEl) {
+        const neurons = (tokens * 0.08) / 1000; // 0.08 Neuronas por cada 1K tokens
+        neuronCountEl.textContent = neurons.toFixed(4);
       }
 
       // Debounce para el análisis pesado en Rust
