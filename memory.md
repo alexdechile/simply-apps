@@ -19,8 +19,8 @@ Ahora la app corre como un servicio de fondo:
 - **Frontend:** HTML/CSS/JS vanilla (`index.html`, `style.css`, `script.js`)
 - **Editor:** EasyMDE / CodeMirror (panel izquierdo)
 - **Preview:** Panel derecho con vista formateada (`output`)
-- **IA API:** DeepInfra (key en `.env` como `DEEPINFRA_API_KEY`)
-- **IA Local:** **aichat** (CLI en Rust) para pulido de texto y **sugerencia de ideas**
+- **IA API (Proxy):** Cloudflare Workers AI Proxy (`chat.comerza.cl` / `workers.dev` con fallback a DeepInfra/OpenRouter)
+- **IA Serverless:** Workers AI (`@cf/meta/llama-3.1-8b-instruct` y `@cf/gemma-2-9b-it`) para pulido, sugerencias y decoración visual
 - **Análisis:** **simply-analyzer** (Rust nativo) para métricas avanzadas
 - **Python:** `researcher.py` (Scrapling), `exporter.py` (docx/xlsx/html)
 
@@ -38,7 +38,7 @@ Ahora la app corre como un servicio de fondo:
 | `editor.js` | Legacy (Tiptap) — NO se usa, el editor activo es EasyMDE en `script.js` |
 | `index.html` | Estructura, modales, toolbar |
 | `style.css` | Estilos, temas, animaciones modal |
-| `.env` | Variables de entorno (DEEPINFRA_API_KEY) |
+| `.env` | Variables de entorno (DEEPINFRA_API_KEY, COMERZA_SECRET_TOKEN, AI_API_URL) |
 | `iniciar.sh` | Mata servidor anterior, arranca Express en 1717, abre navegador |
 | `reiniciar.sh` | Script de reinicio rápido del servidor (sin abrir navegador) |
 | `openspec/specs/main.md` | Spec principal del proyecto (OpenSpec) |
