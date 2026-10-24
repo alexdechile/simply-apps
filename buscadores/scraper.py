@@ -1,8 +1,10 @@
 import os
 import re
 import sys
+import json
 import subprocess
 import urllib.parse
+import urllib.request
 from scrapling.fetchers import Fetcher
 
 
@@ -71,30 +73,72 @@ def get_prioritized_domains(category=None, max_domains=100):
     return domains[:max_domains]
 
 
-def search_ddg(query, max_links=3, skip_ads=True, prioritize=False, category=None):
-    url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
+def search_google(query, max_links=5):
+    api_key = os.environ.get("GOOGLE_SEARCH_API_KEY")
+    cx = os.environ.get("GOOGLE_SEARCH_CX")
+    if not api_key or not cx:
+        return []
     try:
-        page = Fetcher.get(url)
-        results = page.css(".result__a")
-        raw_links = []
-        
-        # Si priorizamos, buscamos hasta 15 enlaces para poder filtrar mejor
-        limit = 15 if prioritize else max_links
-        
-        for res in results:
-            title = res.text.strip()
-            href = res.attrib.get("href")
-            if href and "uddg=" in href:
-                href = urllib.parse.unquote(href.split("uddg=")[1].split("&")[0])
-            if not title or not href:
-                continue
-            if href.startswith("//"):
-                href = "https:" + href
-            if skip_ads and ("y.js" in href or "aclick" in href or "ad_domain" in href):
-                continue
-            raw_links.append({"title": title, "url": href})
-            if len(raw_links) >= limit:
-                break
+        params = urllib.parse.urlencode({
+            "key": api_key,
+            "cx": cx,
+            "q": query,
+            "num": min(max_links, 10)
+        })
+        url = f"https://www.googleapis.com/customsearch/v1?{params}"
+        req = urllib.request.Request(url, headers={"User-Agent": "SimplyApps/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        items = data.get("items", [])
+        results = []
+        for item in items:
+            title = item.get("title", "")
+            link = item.get("link", "")
+            if link and title:
+                results.append({"title": title, "url": link})
+        if results:
+            print(f"[Google Search] Encontrados {len(results)} resultados para: {query}", file=sys.stderr)
+        return results
+    except Exception as e:
+        print(f"[Google Search] Advertencia o fallo ({e}), recurriendo a DuckDuckGo", file=sys.stderr)
+        return []
+
+
+def search_ddg(query, max_links=3, skip_ads=True, prioritize=False, category=None):
+    # Intentar primero Google Search si hay API Key disponible
+    google_limit = 10 if prioritize else max_links
+    google_links = search_google(query, max_links=google_limit)
+    if google_links:
+        raw_links = google_links
+    else:
+        url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
+        try:
+            page = Fetcher.get(url)
+            results = page.css(".result__a")
+            raw_links = []
+            
+            # Si priorizamos, buscamos hasta 15 enlaces para poder filtrar mejor
+            limit = 15 if prioritize else max_links
+            
+            for res in results:
+                title = res.text.strip()
+                href = res.attrib.get("href")
+                if href and "uddg=" in href:
+                    href = urllib.parse.unquote(href.split("uddg=")[1].split("&")[0])
+                if not title or not href:
+                    continue
+                if href.startswith("//"):
+                    href = "https:" + href
+                if skip_ads and ("y.js" in href or "aclick" in href or "ad_domain" in href):
+                    continue
+                raw_links.append({"title": title, "url": href})
+                if len(raw_links) >= limit:
+                    break
+        except Exception as e:
+            print(f"Error in search_ddg: {e}", file=sys.stderr)
+            return []
+
+    try:
                 
         if prioritize:
             p_domains = get_prioritized_domains(category=category, max_domains=150)

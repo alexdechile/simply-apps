@@ -270,6 +270,7 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
 
   // --- ACTUALIZACIÓN DE VISTAS ---
   let analyzeTimeout = null;
+  let fbMirrorTimeout = null;
   let isSyncingEditor = false;
   let isSyncingOutput = false;
   let syncTimeout = null;
@@ -336,14 +337,17 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
     try {
       const md = easyMDE.value();
 
-      // Si no es un resultado de IA, actualizamos en vivo el espejo
+      // Si no es un resultado de IA, actualizamos en vivo el espejo con debounce de 90ms para no laguear el tecleo
       if (!state.isThinking && el.outFB) {
-        const prevScroll = el.outFB.scrollTop;
-        isSyncingOutput = true;
-        el.outFB.textContent = markdownToFacebookUnicode(md);
-        el.outFB.scrollTop = prevScroll;
-        clearTimeout(syncTimeout);
-        syncTimeout = setTimeout(() => { isSyncingOutput = false; }, 80);
+        clearTimeout(fbMirrorTimeout);
+        fbMirrorTimeout = setTimeout(() => {
+          const prevScroll = el.outFB.scrollTop;
+          isSyncingOutput = true;
+          el.outFB.textContent = markdownToFacebookUnicode(md);
+          el.outFB.scrollTop = prevScroll;
+          clearTimeout(syncTimeout);
+          syncTimeout = setTimeout(() => { isSyncingOutput = false; }, 80);
+        }, 90);
       }
 
       if (el.charCount) el.charCount.textContent = md.length;
@@ -608,7 +612,7 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
 
   // --- SELECCION DE MODELO IA ---
   function getSelectedModel() {
-    return localStorage.getItem('simply-ai-model') || 'openrouter:meta-llama/llama-3.3-70b-instruct';
+    return localStorage.getItem('simply-ai-model') || 'deepinfra:meta-llama/Llama-3.3-70B-Instruct-Turbo';
   }
 
   async function initModelSelector() {

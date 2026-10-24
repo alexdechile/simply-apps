@@ -34,7 +34,10 @@ app.use(express.json({ limit: '5mb' }));
 const { execFile, spawn } = require('child_process');
 const yaml = require('js-yaml');
 
-const AI_API_URL = process.env.AI_API_URL || 'https://chat.comerza.cl/v1/chat/completions';
+// Modelos por defecto centrados en costo mínimo y alta velocidad de texto
+const DEFAULT_AI_MODEL = 'deepinfra:meta-llama/Llama-3.3-70B-Instruct-Turbo';
+const FALLBACK_AI_MODEL = 'openrouter:meta-llama/llama-3.3-70b-instruct';
+const ALLOWED_AI_PROVIDERS = new Set(['deepinfra', 'openrouter', 'gemini']);
 
 // Archivos estáticos permitidos explícitamente. Antes se servía todo __dirname,
 // lo que exponía server.js, logs, package.json, lockfiles, etc.
@@ -43,7 +46,6 @@ const PUBLIC_FILES = new Set([
     'style.css',
     'script.js',
     'diagram.js',
-    'editor.js',
     'favicon.svg'
 ]);
 
@@ -60,34 +62,63 @@ app.get('/:file', (req, res, next) => {
     res.sendFile(path.join(__dirname, file));
 });
 
-// Limpia la salida de aichat quitando bloques de razonamiento (<thinking>...</thinking>)
-// y cualquier prefijo/envuelta de sección "response" que devuelvan los modelos de NVIDIA.
+// Resuelve y valida el modelo solicitado. Si es inválido, de Nvidia u Ollama,
+// cae de inmediato a los modelos aprobados (DeepInfra / OpenRouter / Gemini).
+function resolveModel(model) {
+    if (!model || typeof model !== 'string') return DEFAULT_AI_MODEL;
+    const trimmed = model.trim();
+    const provider = trimmed.split(':')[0];
+    if (ALLOWED_AI_PROVIDERS.has(provider)) {
+        return trimmed;
+    }
+    return DEFAULT_AI_MODEL;
+}
+
+// Limpia la salida de IA quitando bloques de razonamiento (<think>...</think>),
+// prefijos de respuesta y bloques envolventes de markdown si vienen del modelo.
 function cleanAIOutput(raw) {
     if (!raw) return '';
     let out = String(raw).trim();
     out = out.replace(/<\/response>\s*$/gi, '');
     out = out.replace(/<think(?:ing)?>[^]*?<\/think(?:ing)?>\s*/gi, '');
     out = out.replace(/^<response>\s*/gi, '');
+    if (out.startsWith('```')) {
+        out = out.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
+    }
     return out.trim();
 }
 
-// Ejecuta aichat en modo no-stream con reintentos por inestabilidad temporal de NVIDIA.
+// Ejecutor unificado de aichat con control de timeout, reintentos y fallback
 function runAichat(systemPrompt, userContent, model, options = {}) {
-    const { maxAttempts = 3, delayMs = 1500 } = options;
+    const { maxAttempts = 3, delayMs = 1200, timeoutMs = 45000 } = options;
+    const targetModel = resolveModel(model);
     const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
 
     function attempt(n) {
         return new Promise((resolve, reject) => {
-            const child = spawn(aichatBin, ['-S', '--model', model, '--prompt', systemPrompt], {
+            const child = spawn(aichatBin, ['-S', '--model', targetModel, '--prompt', systemPrompt], {
                 env: { ...process.env, HOME: '/home/alexdechile' }
             });
             let stdout = '';
             let stderr = '';
             let settled = false;
 
+            const timer = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                try { child.kill('SIGKILL'); } catch (e) {}
+                if (n < maxAttempts) {
+                    console.warn(`[AI] aichat timeout (${timeoutMs}ms) en intento ${n}/${maxAttempts}, reintentando...`);
+                    setTimeout(() => attempt(n + 1).then(resolve, reject), delayMs);
+                } else {
+                    reject(new Error(`Timeout de IA (${timeoutMs}ms) en modelo ${targetModel}`));
+                }
+            }, timeoutMs);
+
             child.on('error', (err) => {
                 if (settled) return;
                 settled = true;
+                clearTimeout(timer);
                 reject(err);
             });
 
@@ -96,18 +127,17 @@ function runAichat(systemPrompt, userContent, model, options = {}) {
 
             child.on('close', (code) => {
                 if (settled) return;
+                settled = true;
+                clearTimeout(timer);
                 if (code === 0) {
-                    settled = true;
                     resolve(stdout);
                     return;
                 }
                 if (n >= maxAttempts) {
-                    settled = true;
                     reject(new Error(stderr.trim() || `aichat exit code ${code}`));
                     return;
                 }
-                settled = true;
-                console.warn(`[AI] aichat attempt ${n}/${maxAttempts} falló (${code}), reintentando...`);
+                console.warn(`[AI] aichat intento ${n}/${maxAttempts} falló (${code}), reintentando...`);
                 setTimeout(() => attempt(n + 1).then(resolve, reject), delayMs);
             });
 
@@ -119,7 +149,7 @@ function runAichat(systemPrompt, userContent, model, options = {}) {
     return attempt(1);
 }
 
-console.log(`[Config] Proxy IA: ${AI_API_URL}`);
+console.log(`[Config] Simply Apps IA: Proveedor preferente DeepInfra / OpenRouter / Gemini (${DEFAULT_AI_MODEL})`);
 
 const VAULT_PATH = '/home/alexdechile/vault';
 const VAULT_POSTS_PATH = path.join(VAULT_PATH, 'posts');
@@ -522,7 +552,7 @@ ${entrevistasSection}
 YouTube Music: ${rawData.youtube_music || ''}`;
 
         try {
-            const stdout = await runAichat(systemPrompt, userContent, 'nvidia2:nvidia/nemotron-3-super-120b-a12b');
+            const stdout = await runAichat(systemPrompt, userContent, DEFAULT_AI_MODEL);
             const post = cleanAIOutput(stdout);
             const cleanPost = post
                 .replace(/^<\|start_header_id\|>assistant<\|end_header_id\|>\n?/g, '')
@@ -591,7 +621,7 @@ Datos encontrados:
 ${JSON.stringify(researchData, null, 2)}`;
 
         try {
-            const stdout = await runAichat(systemPrompt, userContent, 'nvidia2:nvidia/nemotron-3-super-120b-a12b');
+            const stdout = await runAichat(systemPrompt, userContent, DEFAULT_AI_MODEL);
             const content = cleanAIOutput(stdout);
             res.send({ content });
         } catch (aiErr) {
@@ -649,7 +679,7 @@ Datos encontrados:
 ${researchData}`;
 
         try {
-            const stdout = await runAichat(systemPrompt, userContent, 'nvidia2:nvidia/nemotron-3-super-120b-a12b');
+            const stdout = await runAichat(systemPrompt, userContent, DEFAULT_AI_MODEL);
             const content = cleanAIOutput(stdout);
             res.send({ content });
         } catch (aiErr) {
@@ -680,6 +710,7 @@ app.post('/ai-analyze', (req, res) => {
 });
 
 // Endpoint para listar modelos disponibles desde config.yaml de aichat
+// Filtrando solo proveedores aprobados (DeepInfra, OpenRouter, Gemini)
 app.get('/ai-models', (req, res) => {
     const configPath = path.join(process.env.HOME || '/home/alexdechile', '.config/aichat/config.yaml');
     try {
@@ -687,6 +718,7 @@ app.get('/ai-models', (req, res) => {
         const models = [];
         if (config.clients) {
             for (const client of config.clients) {
+                if (!ALLOWED_AI_PROVIDERS.has(client.name)) continue;
                 if (client.models) {
                     for (const model of client.models) {
                         if (model.type !== 'embedding') {
@@ -707,58 +739,27 @@ app.get('/ai-models', (req, res) => {
     }
 });
 
-app.post('/ai-polish', (req, res) => {
-    const { content, model } = req.body;
+app.post('/ai-polish', async (req, res) => {
+    const { content, model } = req.body || {};
     if (!content) return res.status(400).send('No content provided');
 
     console.log(`[AI Polish] Polishing text (length: ${content.length})`);
 
     const systemPrompt = "Actúa como un editor experto y corrector de estilo. Tu misión es corregir la ortografía, gramática y mejorar la redacción del texto proporcionado, manteniendo estrictamente el estilo original (no cambies el tono ni la intención). Devuelve ÚNICAMENTE el texto corregido, sin explicaciones ni preámbulos.";
 
-    let selectedModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
-    if (selectedModel.startsWith('@cf/')) {
-        selectedModel = 'openrouter:meta-llama/llama-3.3-70b-instruct';
-    }
-
-    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const child = spawn(aichatBin, ['-S', '--model', selectedModel, '--prompt', systemPrompt], {
-        env: { ...process.env, HOME: '/home/alexdechile' }
-    });
-
-    child.on('error', (err) => {
-        console.error(`[AI Polish] Spawn error:`, err);
-        if (!res.headersSent) {
-            res.status(500).send('Error interno al invocar IA');
-        }
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (data) => { stdout += data.toString(); });
-    child.stderr.on('data', (data) => { stderr += data.toString(); });
-
-    child.on('close', (code) => {
-        if (code !== 0) {
-            console.error(`[AI Polish] Error code ${code}: ${stderr}`);
-            return res.status(500).send('Error al pulir texto con IA');
-        }
-
-        let polishedText = stdout.trim();
-        if (polishedText.startsWith('```')) {
-            polishedText = polishedText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
-        }
-
+    try {
+        const stdout = await runAichat(systemPrompt, content, model);
+        const polishedText = cleanAIOutput(stdout);
         console.log(`[AI Polish] Success: Text polished`);
         res.send({ content: polishedText });
-    });
-
-    child.stdin.write(content);
-    child.stdin.end();
+    } catch (err) {
+        console.error(`[AI Polish] Error:`, err.message);
+        res.status(500).send('Error al pulir texto con IA: ' + err.message);
+    }
 });
 
-app.post('/ai-decorate', (req, res) => {
-    const { content, model, level } = req.body;
+app.post('/ai-decorate', async (req, res) => {
+    const { content, model, level } = req.body || {};
     if (!content) return res.status(400).send('No content provided');
 
     console.log(`[AI Decorate] Adding salt and pepper (length: ${content.length}), level: ${level}`);
@@ -769,7 +770,6 @@ app.post('/ai-decorate', (req, res) => {
     } else if (level === 3 || level === '3') {
         levelPrompt = "NIVEL DE DECORACIÓN: INTENSO (Sal y Pimienta total). Añade emojis abundantes e ilustrativos para casi cada idea/párrafo, negritas estratégicas, listas si aplica y algún separador sutil si es necesario. Debe ser altamente llamativo y dinámico, ideal para captar la atención en redes sociales.";
     } else {
-        // Por defecto / Nivel 2 (Medio)
         levelPrompt = "NIVEL DE DECORACIÓN: MEDIO. Añade emojis relevantes (moderados, sin saturar) y negritas estratégicas para destacar las ideas clave del texto. Debe ser amigable y estructurado de forma atractiva pero equilibrada.";
     }
 
@@ -782,147 +782,57 @@ IMPORTANTE:
 3. Solo añade la capa visual y decorativa (emojis, negritas, etc.).
 4. Devuelve ÚNICAMENTE el texto decorado, sin ningún comentario ni preámbulo.`;
 
-    let selectedModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
-    if (selectedModel.startsWith('@cf/')) {
-        selectedModel = 'openrouter:meta-llama/llama-3.3-70b-instruct';
-    }
-
-    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const child = spawn(aichatBin, ['-S', '--model', selectedModel, '--prompt', systemPrompt], {
-        env: { ...process.env, HOME: '/home/alexdechile' }
-    });
-
-    child.on('error', (err) => {
-        console.error(`[AI Decorate] Spawn error:`, err);
-        if (!res.headersSent) {
-            res.status(500).send('Error interno al invocar IA');
-        }
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (data) => { stdout += data.toString(); });
-    child.stderr.on('data', (data) => { stderr += data.toString(); });
-
-    child.on('close', (code) => {
-        if (code !== 0) {
-            console.error(`[AI Decorate] Error code ${code}: ${stderr}`);
-            return res.status(500).send('Error al decorar texto con IA');
-        }
-
-        let decoratedText = stdout.trim();
-        if (decoratedText.startsWith('```')) {
-            decoratedText = decoratedText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
-        }
-
+    try {
+        const stdout = await runAichat(systemPrompt, content, model);
+        const decoratedText = cleanAIOutput(stdout);
         console.log(`[AI Decorate] Success: Text decorated`);
         res.send({ content: decoratedText });
-    });
-
-    child.stdin.write(content);
-    child.stdin.end();
+    } catch (err) {
+        console.error(`[AI Decorate] Error:`, err.message);
+        res.status(500).send('Error al decorar texto con IA: ' + err.message);
+    }
 });
 
-app.post('/ai-suggest', (req, res) => {
-    const { content, model } = req.body;
+app.post('/ai-suggest', async (req, res) => {
+    const { content, model } = req.body || {};
     if (!content) return res.status(400).send('No content provided');
 
     console.log(`[AI Suggest] Generating suggestions (length: ${content.length})`);
 
     const systemPrompt = "Eres un asistente creativo y estratega de contenido. Lee el texto que el usuario ha escrito y sugiere 2 o 3 ideas adicionales, ángulos nuevos o párrafos que podrían continuar o enriquecer el post. Mantén el tono y estilo detectado. Sé breve y directo. Devuelve solo las sugerencias en formato markdown, usando viñetas si es necesario.";
 
-    let selectedModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
-    if (selectedModel.startsWith('@cf/')) {
-        selectedModel = 'openrouter:meta-llama/llama-3.3-70b-instruct';
-    }
-
-    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const child = spawn(aichatBin, ['-S', '--model', selectedModel, '--prompt', systemPrompt], {
-        env: { ...process.env, HOME: '/home/alexdechile' }
-    });
-
-    child.on('error', (err) => {
-        console.error(`[AI Suggest] Spawn error:`, err);
-        if (!res.headersSent) {
-            res.status(500).send('Error interno al invocar IA');
-        }
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (data) => { stdout += data.toString(); });
-    child.stderr.on('data', (data) => { stderr += data.toString(); });
-
-    child.on('close', (code) => {
-        if (code !== 0) {
-            console.error(`[AI Suggest] Error code ${code}: ${stderr}`);
-            return res.status(500).send('Error al generar sugerencias con IA');
-        }
-
-        let suggestion = stdout.trim();
-        if (suggestion.startsWith('```')) {
-            suggestion = suggestion.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
-        }
-
+    try {
+        const stdout = await runAichat(systemPrompt, content, model);
+        const suggestion = cleanAIOutput(stdout);
         console.log(`[AI Suggest] Success: Suggestions generated`);
         res.send({ content: suggestion });
-    });
-
-    child.stdin.write(content);
-    child.stdin.end();
+    } catch (err) {
+        console.error(`[AI Suggest] Error:`, err.message);
+        res.status(500).send('Error al generar sugerencias con IA: ' + err.message);
+    }
 });
 
-app.post('/ai-thread', (req, res) => {
-    const { content, model } = req.body;
+app.post('/ai-thread', async (req, res) => {
+    const { content, model } = req.body || {};
     if (!content) return res.status(400).send('No content provided');
 
     console.log(`[AI Thread] Splitting text into thread (length: ${content.length})`);
 
     const systemPrompt = "Actúa como un redactor experto en hilos de X (Twitter). Tu misión es fragmentar el texto proporcionado en un hilo ordenado y coherente de tweets numerados (por ejemplo: '1/', '2/', etc.). Cada fragmento DEBE tener un máximo de 280 caracteres y representar una idea completa y fácil de leer. No resumas el texto completo en un solo tweet, divídelo fluidamente. Devuelve ÚNICAMENTE los tweets numerados, separados entre sí por una línea en blanco, sin comentarios ni explicaciones adicionales.";
 
-    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const aichatModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
-
-    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt], {
-        env: { ...process.env, HOME: '/home/alexdechile' }
-    });
-
-    child.on('error', (err) => {
-        console.error(`[AI Thread] Spawn error:`, err);
-        if (!res.headersSent) {
-            res.status(500).send('Error interno al invocar IA');
-        }
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (data) => { stdout += data.toString(); });
-    child.stderr.on('data', (data) => { stderr += data.toString(); });
-
-    child.on('close', (code) => {
-        if (code !== 0) {
-            console.error(`[AI Thread] Error code ${code}: ${stderr}`);
-            return res.status(500).send('Error al generar hilo con IA');
-        }
-
-        let threadText = stdout.trim();
-        if (threadText.startsWith('```')) {
-            threadText = threadText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
-        }
-
+    try {
+        const stdout = await runAichat(systemPrompt, content, model);
+        const threadText = cleanAIOutput(stdout);
         console.log(`[AI Thread] Success: Thread generated`);
         res.send({ content: threadText });
-    });
-
-    child.stdin.write(content);
-    child.stdin.end();
+    } catch (err) {
+        console.error(`[AI Thread] Error:`, err.message);
+        res.status(500).send('Error al generar hilo con IA: ' + err.message);
+    }
 });
 
-app.post('/ai-copywrite', (req, res) => {
-    const { content, model, formula } = req.body;
+app.post('/ai-copywrite', async (req, res) => {
+    const { content, model, formula } = req.body || {};
     if (!content) return res.status(400).send('No content provided');
     if (!formula) return res.status(400).send('No formula provided');
 
@@ -939,90 +849,34 @@ app.post('/ai-copywrite', (req, res) => {
 ${formulaPrompt}
 Devuelve ÚNICAMENTE el texto reescrito estructurado, sin introducciones, saludos ni comentarios adicionales, y sin envolverlo en bloques de código markdown.`;
 
-    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const aichatModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
-
-    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt], {
-        env: { ...process.env, HOME: '/home/alexdechile' }
-    });
-
-    child.on('error', (err) => {
-        console.error(`[AI Copywrite] Spawn error:`, err);
-        if (!res.headersSent) {
-            res.status(500).send('Error interno al invocar IA');
-        }
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (data) => { stdout += data.toString(); });
-    child.stderr.on('data', (data) => { stderr += data.toString(); });
-
-    child.on('close', (code) => {
-        if (code !== 0) {
-            console.error(`[AI Copywrite] Error code ${code}: ${stderr}`);
-            return res.status(500).send('Error al aplicar copywriting con IA');
-        }
-
-        let copyText = stdout.trim();
-        if (copyText.startsWith('```')) {
-            copyText = copyText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
-        }
-
+    try {
+        const stdout = await runAichat(systemPrompt, content, model);
+        const copyText = cleanAIOutput(stdout);
         console.log(`[AI Copywrite] Success: Copywriting applied`);
         res.send({ content: copyText });
-    });
-
-    child.stdin.write(content);
-    child.stdin.end();
+    } catch (err) {
+        console.error(`[AI Copywrite] Error:`, err.message);
+        res.status(500).send('Error al aplicar copywriting con IA: ' + err.message);
+    }
 });
 
-app.post('/ai-hooks', (req, res) => {
-    const { content, model } = req.body;
+app.post('/ai-hooks', async (req, res) => {
+    const { content, model } = req.body || {};
     if (!content) return res.status(400).send('No content provided');
 
     console.log(`[AI Hooks] Generating hooks (length: ${content.length})`);
 
     const systemPrompt = "Actúa como un estratega de contenido viral y copywriter. Tu misión es leer el texto provisto y proponer 3 ganchos (hooks) o líneas de apertura sumamente llamativas y optimizadas para redes sociales basadas en el contenido. Enuméralas del 1 al 3. Devuelve ÚNICAMENTE las 3 propuestas numeradas en formato de lista Markdown, sin preámbulos, notas ni comentarios adicionales.";
 
-    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
-    const aichatModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
-
-    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt], {
-        env: { ...process.env, HOME: '/home/alexdechile' }
-    });
-
-    child.on('error', (err) => {
-        console.error(`[AI Hooks] Spawn error:`, err);
-        if (!res.headersSent) {
-            res.status(500).send('Error interno al invocar IA');
-        }
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    child.stdout.on('data', (data) => { stdout += data.toString(); });
-    child.stderr.on('data', (data) => { stderr += data.toString(); });
-
-    child.on('close', (code) => {
-        if (code !== 0) {
-            console.error(`[AI Hooks] Error code ${code}: ${stderr}`);
-            return res.status(500).send('Error al generar hooks con IA');
-        }
-
-        let hooksText = stdout.trim();
-        if (hooksText.startsWith('```')) {
-            hooksText = hooksText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
-        }
-
+    try {
+        const stdout = await runAichat(systemPrompt, content, model);
+        const hooksText = cleanAIOutput(stdout);
         console.log(`[AI Hooks] Success: Hooks generated`);
         res.send({ content: hooksText });
-    });
-
-    child.stdin.write(content);
-    child.stdin.end();
+    } catch (err) {
+        console.error(`[AI Hooks] Error:`, err.message);
+        res.status(500).send('Error al generar hooks con IA: ' + err.message);
+    }
 });
 
 app.post('/export', (req, res) => {
@@ -1069,11 +923,7 @@ app.post('/ask-ai', async (req, res) => {
         return res.status(400).json({ error: { message: 'systemPrompt y userContent deben ser texto' } });
     }
 
-    let selectedModel = (typeof model === 'string' && model.trim()) ? model.trim() : 'nvidia2:nvidia/nemotron-3-super-120b-a12b';
-    if (selectedModel.startsWith('@cf/')) {
-        selectedModel = 'nvidia2:nvidia/nemotron-3-super-120b-a12b';
-    }
-
+    const selectedModel = resolveModel(model);
     console.log(`[AI Ask-AI] Running aichat with model: ${selectedModel}`);
 
     try {

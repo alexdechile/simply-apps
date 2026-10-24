@@ -1,5 +1,23 @@
 # Bitácora de Alex - Simply Apps
 
+## Último Realizado [2026-10-24]
+- **Estandarización de IA, Poda de Deuda Técnica y Optimización de Rendimiento:**
+  - **Estrategia y Arquitectura Homelab:** Se definió la app como 100% privada para el homelab de Don Alex. Se eliminaron por completo las referencias y dependencias a NVIDIA NIM (por su volatilidad y rotación de IDs que rompían los generadores con error 404) y Ollama / IA local (evitando consumo inviable de RAM/CPU en esta máquina sin GPU).
+  - **Concentración en Modelos de Texto Económicos y Capas Gratuitas:**
+    - Se fijó como motor principal **DeepInfra** (`meta-llama/Llama-3.3-70B-Instruct-Turbo` a $0.59 por millón de tokens o DeepSeek V3) con fallback a **OpenRouter** (modelos `:free` y Llama 3.3) y soporte para **Gemini**.
+    - Se filtró el endpoint `/ai-models` en [server.js](file:///home/alexdechile/proyectos/simply-apps/server.js) para que el dropdown de modelos solo liste los clientes aprobados (`deepinfra`, `openrouter`, `gemini`), eliminando opciones rotas o locales.
+  - **Unificación de Endpoints de IA bajo `runAichat`:**
+    - Todos los endpoints (`/ai-polish`, `/ai-decorate`, `/ai-suggest`, `/ai-thread`, `/ai-copywrite`, `/ai-hooks`, `/cancion/completo`, `/tech/completo`, `/news/completo` y `/ask-ai`) ahora se ejecutan a través de `runAichat()` con timeout controlado (45s con SIGKILL), 3 reintentos automáticos y sanitización de etiquetas `<think>...</think>`. Se resolvió definitivamente el error 404 que botaba los generadores de crónicas musicales, tech y noticias.
+  - **Integración de Google Search API:**
+    - En [buscadores/scraper.py](file:///home/alexdechile/proyectos/simply-apps/buscadores/scraper.py), se añadió la función `search_google()` conectada a las credenciales oficiales (`GOOGLE_SEARCH_API_KEY` y `GOOGLE_SEARCH_CX`). Si Google Search está activo, realiza búsquedas estructuradas inmediatas sin lidiar con los bloqueos o captchas de DuckDuckGo; si falla o no hay red, recurre fluidamente a Scrapling / DDG como fallback.
+  - **Poda de Librerías y Limpieza de Código Muerto:**
+    - Se desinstalaron las dependencias huérfanas de TipTap (`@tiptap/core`, `@tiptap/starter-kit`, `@tiptap/markdown`) reduciendo drásticamente `package.json` y `node_modules`.
+    - Se eliminó el archivo legacy no utilizado `editor.js`.
+    - Se limpiaron las variables fantasma en [.env](file:///home/alexdechile/proyectos/simply-apps/.env) (`COMERZA_SECRET_TOKEN` y `AI_API_URL`).
+  - **Optimización de UI (Debounce en Mirror de Facebook):**
+    - En [script.js](file:///home/alexdechile/proyectos/simply-apps/script.js), se implementó un debounce de 90ms para la conversión matemática Unicode (`markdownToFacebookUnicode`), evitando que cada pulsación de tecla congele o laguee el editor en textos largos.
+
+
 ## Último Realizado [2026-09-27]
 - **Corrección de salto del cursor y desplazamiento forzado hacia arriba en textos largos:**
   - **Causa raíz:**
