@@ -3,74 +3,190 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const fs = require('fs');
 const app = express();
-const port = 1717;
+const port = Number(process.env.PORT) || 1717;
+const host = process.env.HOST || '127.0.0.1';
+const isLoopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
 
-const server = app.listen(port, '0.0.0.0', () => {
-    console.log(`Simply Apps running at http://0.0.0.0:${port}`);
+if (!isLoopback) {
+    console.warn('[Seguridad] La app está escuchando fuera de localhost. No tiene autenticación: expone ejecución de comandos, lectura/escritura de archivos y uso de IA a toda la red. Usa un proxy autenticado o HOST=127.0.0.1.');
+}
+
+const server = app.listen(port, host, () => {
+    console.log(`Simply Apps running at http://${host}:${port}`);
 });
 server.timeout = 120000; // 120 segundos
 server.keepAliveTimeout = 125000;
 
-app.use(express.json());
-app.use(express.static(__dirname));
+// Cabeceras de seguridad básicas
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    next();
+});
 
-const { exec, spawn } = require('child_process');
+// Límite de payload para evitar DoS por cuerpos gigantes.
+app.use(express.json({ limit: '5mb' }));
+
+const { execFile, spawn } = require('child_process');
 const yaml = require('js-yaml');
 
-// Configuración de IA (DeepInfra) desde variable de entorno
-const DEEPINFRA_API_KEY = (process.env.DEEPINFRA_API_KEY || '').trim();
-const COMERZA_SECRET_TOKEN = (process.env.COMERZA_SECRET_TOKEN || 'comerza_sec_token_5a9d82f1b4').trim();
 const AI_API_URL = process.env.AI_API_URL || 'https://chat.comerza.cl/v1/chat/completions';
 
-const logMsg = `[Config] API Key: ${DEEPINFRA_API_KEY ? 'Cargada (L:' + DEEPINFRA_API_KEY.length + ', ' + DEEPINFRA_API_KEY.substring(0,3) + '...' + DEEPINFRA_API_KEY.slice(-3) + ')' : 'NO CARGADA'} | Proxy: ${AI_API_URL}\n`;
-fs.appendFileSync(path.join(__dirname, 'simply.log'), logMsg);
-console.log(logMsg.trim());
+// Archivos estáticos permitidos explícitamente. Antes se servía todo __dirname,
+// lo que exponía server.js, logs, package.json, lockfiles, etc.
+const PUBLIC_FILES = new Set([
+    'index.html',
+    'style.css',
+    'script.js',
+    'diagram.js',
+    'editor.js',
+    'favicon.svg'
+]);
+
+app.get('/', (req, res) => {
+    // Evita que el navegador sirva index.html/script.js viejos tras una actualización.
+    res.setHeader('Cache-Control', 'no-store');
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+app.get('/:file', (req, res, next) => {
+    const file = req.params.file;
+    if (!PUBLIC_FILES.has(file)) return next();
+    res.setHeader('Cache-Control', 'no-store');
+    res.sendFile(path.join(__dirname, file));
+});
+
+// Limpia la salida de aichat quitando bloques de razonamiento (<thinking>...</thinking>)
+// y cualquier prefijo/envuelta de sección "response" que devuelvan los modelos de NVIDIA.
+function cleanAIOutput(raw) {
+    if (!raw) return '';
+    let out = String(raw).trim();
+    out = out.replace(/<\/response>\s*$/gi, '');
+    out = out.replace(/<think(?:ing)?>[^]*?<\/think(?:ing)?>\s*/gi, '');
+    out = out.replace(/^<response>\s*/gi, '');
+    return out.trim();
+}
+
+// Ejecuta aichat en modo no-stream con reintentos por inestabilidad temporal de NVIDIA.
+function runAichat(systemPrompt, userContent, model, options = {}) {
+    const { maxAttempts = 3, delayMs = 1500 } = options;
+    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
+
+    function attempt(n) {
+        return new Promise((resolve, reject) => {
+            const child = spawn(aichatBin, ['-S', '--model', model, '--prompt', systemPrompt], {
+                env: { ...process.env, HOME: '/home/alexdechile' }
+            });
+            let stdout = '';
+            let stderr = '';
+            let settled = false;
+
+            child.on('error', (err) => {
+                if (settled) return;
+                settled = true;
+                reject(err);
+            });
+
+            child.stdout.on('data', (data) => { stdout += data.toString(); });
+            child.stderr.on('data', (data) => { stderr += data.toString(); });
+
+            child.on('close', (code) => {
+                if (settled) return;
+                if (code === 0) {
+                    settled = true;
+                    resolve(stdout);
+                    return;
+                }
+                if (n >= maxAttempts) {
+                    settled = true;
+                    reject(new Error(stderr.trim() || `aichat exit code ${code}`));
+                    return;
+                }
+                settled = true;
+                console.warn(`[AI] aichat attempt ${n}/${maxAttempts} falló (${code}), reintentando...`);
+                setTimeout(() => attempt(n + 1).then(resolve, reject), delayMs);
+            });
+
+            child.stdin.write(userContent || '');
+            child.stdin.end();
+        });
+    }
+
+    return attempt(1);
+}
+
+console.log(`[Config] Proxy IA: ${AI_API_URL}`);
+
+const VAULT_PATH = '/home/alexdechile/vault';
+const VAULT_POSTS_PATH = path.join(VAULT_PATH, 'posts');
+
+// Solo permite nombres de archivo simples con extensión .md, sin rutas ni
+// caracteres de control. Evita path traversal en escritura y lectura.
+function sanitizeVaultFilename(raw) {
+    if (typeof raw !== 'string') return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    if (trimmed !== path.basename(trimmed)) return null;
+    if (trimmed.startsWith('.') || trimmed.length > 150) return null;
+    if (/[\x00-\x1f<>:"/\\|?*]/.test(trimmed)) return null;
+    const name = /\.md$/i.test(trimmed) ? trimmed : `${trimmed}.md`;
+    if (name.startsWith('.') || name.length > 150) return null;
+    return name;
+}
 
 app.post('/save-to-vault', (req, res) => {
-    const { content, filename } = req.body;
-    console.log(`[Vault] Solicitud recibida - filename: ${filename}, content length: ${content ? content.length : 0}`);
-    
-    if (!content) {
+    const { content, filename } = req.body || {};
+    console.log(`[Vault] Solicitud recibida - filename: ${filename}, content length: ${typeof content === 'string' ? content.length : 0}`);
+
+    if (typeof content !== 'string' || !content) {
         console.log('[Vault] Error: No content provided');
         return res.status(400).json({ error: 'No content provided' });
     }
 
-    const vaultPath = '/home/alexdechile/vault';
-    const postsPath = path.join(vaultPath, 'posts');
     const date = new Date().toISOString().split('T')[0];
-    const name = filename || `post_${date}.md`;
-    
-    console.log(`[Vault] Guardando como: ${name} en ${postsPath}`);
-    
+    const name = sanitizeVaultFilename(filename) || (filename ? null : `post_${date}.md`);
+    if (!name) {
+        return res.status(400).json({ error: 'Nombre de archivo inválido. Usa solo un nombre .md sin rutas.' });
+    }
+
+    console.log(`[Vault] Guardando como: ${name} en ${VAULT_POSTS_PATH}`);
+
     // Asegurar que la carpeta 'posts' existe
-    if (!fs.existsSync(postsPath)) {
-        fs.mkdirSync(postsPath, { recursive: true });
+    if (!fs.existsSync(VAULT_POSTS_PATH)) {
+        fs.mkdirSync(VAULT_POSTS_PATH, { recursive: true });
         console.log(`[Vault] Creada carpeta posts`);
     }
 
-    const fullPath = path.join(postsPath, name);
-    const sidebarPath = path.join(vaultPath, '_sidebar.md');
+    const fullPath = path.resolve(VAULT_POSTS_PATH, name);
+    if (!fullPath.startsWith(path.resolve(VAULT_POSTS_PATH) + path.sep)) {
+        return res.status(400).json({ error: 'Ruta de archivo inválida' });
+    }
+    const sidebarPath = path.join(VAULT_PATH, '_sidebar.md');
 
     fs.writeFile(fullPath, content, (err) => {
         if (err) {
             console.error('[Vault] Error saving to vault:', err);
-            return res.status(500).json({ error: 'Error saving to vault', details: err.message });
+            return res.status(500).json({ error: 'Error saving to vault' });
         }
-        
+
         console.log(`[Vault] Success: Saved ${name} to vault/posts`);
 
         // Actualizar _sidebar.md automáticamente
         try {
             if (fs.existsSync(sidebarPath)) {
                 let sidebarContent = fs.readFileSync(sidebarPath, 'utf8');
-                const linkText = `* [${name.replace('.md', '')}](/posts/${name})`;
-                
+                const linkText = `* [${name.replace(/\.md$/i, '')}](/posts/${name})`;
+
                 if (!sidebarContent.includes(linkText)) {
                     // Si no existe la sección Simply Posts, crearla
                     if (!sidebarContent.includes('**Simply Posts**')) {
                         sidebarContent += '\n\n* ✍️ **Simply Posts**';
                     }
-                    
+
                     // Añadir el link bajo la sección (o al final si es más simple)
                     sidebarContent += `\n  ${linkText}`;
                     fs.writeFileSync(sidebarPath, sidebarContent);
@@ -88,18 +204,15 @@ app.post('/save-to-vault', (req, res) => {
 
 // Endpoint para listar posts del Vault
 app.get('/vault/posts', (req, res) => {
-    const vaultPath = '/home/alexdechile/vault';
-    const postsPath = path.join(vaultPath, 'posts');
-    
     try {
-        if (!fs.existsSync(postsPath)) {
+        if (!fs.existsSync(VAULT_POSTS_PATH)) {
             return res.status(404).json({ error: 'Posts directory not found' });
         }
-        
-        const files = fs.readdirSync(postsPath)
-            .filter(file => file.endsWith('.md'))
+
+        const files = fs.readdirSync(VAULT_POSTS_PATH)
+            .filter(file => file.endsWith('.md') && !file.startsWith('.'))
             .map(file => {
-                const filePath = path.join(postsPath, file);
+                const filePath = path.join(VAULT_POSTS_PATH, file);
                 const stat = fs.statSync(filePath);
                 return {
                     name: file,
@@ -109,7 +222,7 @@ app.get('/vault/posts', (req, res) => {
                 };
             })
             .sort((a, b) => b.mtime - a.mtime);
-        
+
         res.json({ posts: files });
     } catch (e) {
         console.error('[Vault] Error listing posts:', e.message);
@@ -119,17 +232,23 @@ app.get('/vault/posts', (req, res) => {
 
 // Endpoint para obtener contenido de un post específico del Vault
 app.get('/vault/post/:filename', (req, res) => {
-    const { filename } = req.params;
-    const vaultPath = '/home/alexdechile/vault';
-    const postPath = path.join(vaultPath, 'posts', filename);
-    
+    const safeFilename = sanitizeVaultFilename(req.params.filename);
+    if (!safeFilename) {
+        return res.status(400).json({ error: 'Nombre de archivo inválido' });
+    }
+
+    const postPath = path.resolve(VAULT_POSTS_PATH, safeFilename);
+    if (!postPath.startsWith(path.resolve(VAULT_POSTS_PATH) + path.sep)) {
+        return res.status(400).json({ error: 'Ruta de archivo inválida' });
+    }
+
     try {
-        if (!fs.existsSync(postPath)) {
+        if (!fs.existsSync(postPath) || !fs.statSync(postPath).isFile()) {
             return res.status(404).json({ error: 'Post not found' });
         }
-        
+
         const content = fs.readFileSync(postPath, 'utf8');
-        res.json({ content, path: postPath });
+        res.json({ content, path: `/posts/${safeFilename}` });
     } catch (e) {
         console.error('[Vault] Error reading post:', e.message);
         res.status(500).json({ error: 'Error reading post' });
@@ -196,28 +315,131 @@ app.post('/api/stickies', (req, res) => {
     }
 });
 
+// =====================================================================
+// SESIONES COMPARTIDAS POR QR (cola FIFO, retiene SESSION_LIMIT sesiones)
+// =====================================================================
+const os = require('os');
+const crypto = require('crypto');
+
+const SESSIONS_FILE = process.env.SESSIONS_FILE || path.join(__dirname, 'sessions.json');
+const SESSION_LIMIT = Math.max(1, Number(process.env.SESSION_LIMIT) || 10);
+
+function loadSessions() {
+    try {
+        const raw = fs.readFileSync(SESSIONS_FILE, 'utf8');
+        const data = JSON.parse(raw);
+        return Array.isArray(data) ? data : [];
+    } catch (err) {
+        return [];
+    }
+}
+
+let sessions = loadSessions();
+
+function persistSessions() {
+    try {
+        const tmp = `${SESSIONS_FILE}.tmp`;
+        fs.writeFileSync(tmp, JSON.stringify(sessions, null, 2), 'utf8');
+        fs.renameSync(tmp, SESSIONS_FILE);
+    } catch (err) {
+        console.error('[Sessions] No se pudo persistir:', err.message);
+    }
+}
+
+// FIFO: si se supera el límite, descarta la sesión más antigua (la del frente).
+function evictSessions() {
+    let removed = null;
+    while (sessions.length > SESSION_LIMIT) {
+        removed = sessions.shift();
+        console.log(`[Sessions] FIFO: eliminada sesión ${removed.id} (se superó el límite de ${SESSION_LIMIT})`);
+    }
+    if (removed) persistSessions();
+}
+
+evictSessions();
+
+// URL base a la que apuntará el QR para que otra máquina pueda abrir la sesión.
+// Prioridad: SESSION_BASE_URL > host de escucha no loopback > IP LAN detectada.
+function publicBaseUrl() {
+    const envBase = process.env.SESSION_BASE_URL;
+    if (envBase) return String(envBase).replace(/\/+$/, '');
+    if (!isLoopback) return `http://${host}:${port}`;
+    try {
+        const ifaces = os.networkInterfaces();
+        for (const name of Object.keys(ifaces)) {
+            for (const iface of ifaces[name] || []) {
+                if (iface && iface.family === 'IPv4' && !iface.internal) {
+                    return `http://${iface.address}:${port}`;
+                }
+            }
+        }
+    } catch (err) { /* sin interfaces */ }
+    return `http://localhost:${port}`;
+}
+
+app.post('/api/session', (req, res) => {
+    const state = req.body && req.body.state;
+    if (!state || typeof state !== 'object' || Array.isArray(state)) {
+        return res.status(400).json({ error: 'Se espera un objeto state' });
+    }
+    const id = crypto.randomBytes(8).toString('hex');
+    const entry = { id, createdAt: new Date().toISOString(), state };
+    sessions.push(entry);
+    evictSessions();
+    persistSessions();
+    console.log(`[Sessions] Creada ${id} (total: ${sessions.length}/${SESSION_LIMIT})`);
+    if (isLoopback && !process.env.SESSION_BASE_URL) {
+        console.warn(`[Sessions] El servidor escucha solo en ${host}. Para que otra máquina abra la sesión, define SESSION_BASE_URL (ej: https://tu.dominio) o levanta con HOST=0.0.0.0.`);
+    }
+    res.json({ id, createdAt: entry.createdAt, url: `${publicBaseUrl()}?session=${id}` });
+});
+
+app.get('/api/session', (req, res) => {
+    res.json({ sessions: sessions.map(s => ({ id: s.id, createdAt: s.createdAt })) });
+});
+
+app.get('/api/session/:id', (req, res) => {
+    const entry = sessions.find(s => s.id === req.params.id);
+    if (!entry) return res.status(404).json({ error: 'Sesión no encontrada' });
+    res.json({ id: entry.id, createdAt: entry.createdAt, state: entry.state, url: `${publicBaseUrl()}?session=${entry.id}` });
+});
+
+app.delete('/api/session/:id', (req, res) => {
+    const idx = sessions.findIndex(s => s.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Sesión no encontrada' });
+    sessions.splice(idx, 1);
+    persistSessions();
+    console.log(`[Sessions] Eliminada ${req.params.id} (total: ${sessions.length}/${SESSION_LIMIT})`);
+    res.json({ ok: true });
+});
+
 app.post('/research', (req, res) => {
-    const { topic, depth, category } = req.body;
-    if (!topic) return res.status(400).send('No topic provided');
+    const { topic, depth, category } = req.body || {};
+    if (typeof topic !== 'string' || !topic.trim()) return res.status(400).send('No topic provided');
 
     const pythonBin = path.join(__dirname, 'venv', 'bin', 'python3');
     const scriptPath = path.join(__dirname, 'researcher.py');
-    
-    console.log(`Researching topic: ${topic} (Depth: ${depth || 'sencilla'}, Category: ${category || 'general'})`);
-    
-    const safeCategory = category ? category.replace(/"/g, '\\"') : '';
-    const command = `${pythonBin} "${scriptPath}" "${topic.replace(/"/g, '\\"')}" "${depth || 'sencilla'}" "${safeCategory}"`;
-    
-    exec(command, (error, stdout, stderr) => {
+    const safeTopic = topic.trim();
+    const safeDepth = (typeof depth === 'string' && depth.trim()) ? depth.trim() : 'sencilla';
+    const safeCategory = (typeof category === 'string') ? category.trim() : '';
+
+    console.log(`Researching topic: ${safeTopic} (Depth: ${safeDepth}, Category: ${safeCategory || 'general'})`);
+
+    // execFile + array de argumentos: no pasa por shell, así que los
+    // metacaracteres ($(...), backticks, ;, &&, etc.) no se interpretan.
+    const args = [scriptPath, safeTopic, safeDepth];
+    if (safeCategory) args.push(safeCategory);
+
+    execFile(pythonBin, args, { maxBuffer: 1024 * 1024 * 5 }, (error, stdout, stderr) => {
         if (error) {
             console.error(`Exec error: ${error}`);
             console.error(`Stderr: ${stderr}`);
-            return res.status(500).send(stderr || 'Error during research');
+            return res.status(500).send('Error during research');
         }
         if (stderr) console.log(`Python Logs: ${stderr}`);
-        
-        console.log(`Research completed for: ${topic}`);
-        
+
+        console.log(`Research completed for: ${safeTopic}`);
+
         let resultData;
         try {
             resultData = JSON.parse(stdout);
@@ -230,20 +452,19 @@ app.post('/research', (req, res) => {
 });
 
 app.post('/cancion/completo', async (req, res) => {
-    const { query } = req.body;
-    if (!query) return res.status(400).send('No query provided');
+    const { query } = req.body || {};
+    if (typeof query !== 'string' || !query.trim()) return res.status(400).send('No query provided');
 
     const pythonBin = path.join(__dirname, 'venv', 'bin', 'python3');
     const scriptPath = path.join(__dirname, 'buscadores', 'cancion.py');
 
     console.log(`[Cancion] Buscando datos para: ${query}`);
 
-    const command = `${pythonBin} "${scriptPath}" "${query.replace(/"/g, '\\"')}"`;
-
-    exec(command, { maxBuffer: 1024 * 1024 }, async (error, stdout, stderr) => {
+    const safeQuery = String(query).trim();
+    execFile(pythonBin, [scriptPath, safeQuery], { maxBuffer: 1024 * 1024 * 5 }, async (error, stdout, stderr) => {
         if (error) {
             console.error(`[Cancion] Error: ${error}`);
-            return res.status(500).send(stderr || 'Error al buscar datos de la canción');
+            return res.status(500).send('Error al buscar datos de la canción');
         }
         if (stderr) console.log(`[Cancion] Logs: ${stderr}`);
 
@@ -301,67 +522,38 @@ ${entrevistasSection}
 YouTube Music: ${rawData.youtube_music || ''}`;
 
         try {
-            const aiResponse = await fetch('https://api.deepinfra.com/v1/openai/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${DEEPINFRA_API_KEY}`
-                },
-                body: JSON.stringify({
-                    model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-                    messages: [
-                        { role: "system", content: systemPrompt },
-                        { role: "user", content: userContent }
-                    ],
-                    temperature: 0.7,
-                    max_tokens: 8192
-                })
-            });
-
-            const data = await aiResponse.json();
-            if (!aiResponse.ok) {
-                return res.status(500).send(data.error ? data.error.message : 'Error de IA');
-            }
-
-            // Verificar si la respuesta se truncó por límite de tokens
-            const finishReason = data.choices?.[0]?.finish_reason;
-            if (finishReason === 'length') {
-                console.warn(`[Cancion] Respuesta truncada por max_tokens para: ${query}`);
-            }
-
-            const post = data.choices[0].message.content.trim();
+            const stdout = await runAichat(systemPrompt, userContent, 'nvidia2:nvidia/nemotron-3-super-120b-a12b');
+            const post = cleanAIOutput(stdout);
             const cleanPost = post
                 .replace(/^<\|start_header_id\|>assistant<\|end_header_id\|>\n?/g, '')
                 .replace(/^```markdown\n?/g, '')
                 .replace(/```$/g, '')
-                .replace(/<think>[\s\S]*?<\/think>/g, '')
                 .replace(/^.*?no (hay |est.+n |se encuentran ).*?datos.*?\n/gim, '')
                 .replace(/^.*?datos (no |no hay |no est.+n ).*?\n/gim, '')
                 .replace(/\n{3,}/g, '\n\n')
                 .trim();
             res.send({ content: cleanPost });
         } catch (aiErr) {
-            console.error('[Cancion] AI Error:', aiErr);
+            console.error('[Cancion] AI Error:', aiErr.message);
             res.status(500).send('Error al generar el post con IA');
         }
     });
 });
 
 app.post('/tech/completo', async (req, res) => {
-    const { query } = req.body;
-    if (!query) return res.status(400).send('No query provided');
+    const { query } = req.body || {};
+    if (typeof query !== 'string' || !query.trim()) return res.status(400).send('No query provided');
 
     const pythonBin = path.join(__dirname, 'venv', 'bin', 'python3');
     const scriptPath = path.join(__dirname, 'researcher.py');
 
     console.log(`[Tech] Investigando: ${query}`);
 
-    const command = `${pythonBin} "${scriptPath}" "${query.replace(/"/g, '\\"')}" --depth 1`;
-
-    exec(command, { maxBuffer: 1024 * 1024 * 5 }, async (error, stdout, stderr) => {
+    const safeQuery = String(query).trim();
+    execFile(pythonBin, [scriptPath, safeQuery, '--depth', '1'], { maxBuffer: 1024 * 1024 * 5 }, async (error, stdout, stderr) => {
         if (error) {
             console.error(`[Tech] Error: ${error}`);
-            return res.status(500).send(stderr || 'Error al investigar tecnología');
+            return res.status(500).send('Error al investigar tecnología');
         }
 
         let researchData;
@@ -399,48 +591,30 @@ Datos encontrados:
 ${JSON.stringify(researchData, null, 2)}`;
 
         try {
-            const aiResponse = await fetch('https://api.deepinfra.com/v1/openai/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${DEEPINFRA_API_KEY}`
-                },
-                body: JSON.stringify({
-                    model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-                    messages: [
-                        { role: "system", content: systemPrompt },
-                        { role: "user", content: userContent }
-                    ],
-                    temperature: 0.7,
-                    max_tokens: 4096
-                })
-            });
-
-            const data = await aiResponse.json();
-            if (!aiResponse.ok) return res.status(500).send('Error de IA en Tech');
-
-            res.send({ content: data.choices[0].message.content.trim() });
+            const stdout = await runAichat(systemPrompt, userContent, 'nvidia2:nvidia/nemotron-3-super-120b-a12b');
+            const content = cleanAIOutput(stdout);
+            res.send({ content });
         } catch (aiErr) {
+            console.error('[Tech] AI Error:', aiErr.message);
             res.status(500).send('Error al generar crónica tech');
         }
     });
 });
 
 app.post('/news/completo', async (req, res) => {
-    const { query } = req.body;
-    if (!query) return res.status(400).send('No query provided');
+    const { query } = req.body || {};
+    if (typeof query !== 'string' || !query.trim()) return res.status(400).send('No query provided');
 
     const pythonBin = path.join(__dirname, 'venv', 'bin', 'python3');
     const scriptPath = path.join(__dirname, 'researcher.py');
 
     console.log(`[News] Investigando trasfondo: ${query}`);
 
-    const command = `${pythonBin} "${scriptPath}" "${query.replace(/"/g, '\\"')}" --depth 1`;
-
-    exec(command, { maxBuffer: 1024 * 1024 * 5 }, async (error, stdout, stderr) => {
+    const safeQuery = String(query).trim();
+    execFile(pythonBin, [scriptPath, safeQuery, '--depth', '1'], { maxBuffer: 1024 * 1024 * 5 }, async (error, stdout, stderr) => {
         if (error) {
             console.error(`[News] Error: ${error}`);
-            return res.status(500).send(stderr || 'Error al investigar noticia');
+            return res.status(500).send('Error al investigar noticia');
         }
         if (stderr) console.log(`[News] Logs: ${stderr}`);
 
@@ -475,47 +649,26 @@ Datos encontrados:
 ${researchData}`;
 
         try {
-            const aiResponse = await fetch('https://api.deepinfra.com/v1/openai/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${DEEPINFRA_API_KEY}`
-                },
-                body: JSON.stringify({
-                    model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-                    messages: [
-                        { role: "system", content: systemPrompt },
-                        { role: "user", content: userContent }
-                    ],
-                    temperature: 0.7,
-                    max_tokens: 4096
-                })
-            });
-
-            const data = await aiResponse.json();
-            if (!aiResponse.ok) return res.status(500).send('Error de IA en News');
-
-            res.send({ content: data.choices[0].message.content.trim() });
+            const stdout = await runAichat(systemPrompt, userContent, 'nvidia2:nvidia/nemotron-3-super-120b-a12b');
+            const content = cleanAIOutput(stdout);
+            res.send({ content });
         } catch (aiErr) {
+            console.error('[News] AI Error:', aiErr.message);
             res.status(500).send('Error al generar análisis de noticias');
         }
     });
 });
 
 app.post('/ai-analyze', (req, res) => {
-    const { content } = req.body;
-    if (!content) return res.status(400).send('No content provided');
+    const { content } = req.body || {};
+    if (typeof content !== 'string' || !content.trim()) return res.status(400).send('No content provided');
 
     const analyzerBin = path.join(__dirname, 'simply-analyzer', 'target', 'release', 'simply-analyzer');
-    
-    // Escapar para shell
-    const escapedContent = content.replace(/"/g, '\\"').replace(/`/g, '\\`').replace(/\$/g, '\\$');
-    const command = `"${analyzerBin}" "${escapedContent}"`;
 
-    exec(command, { maxBuffer: 1024 * 1024 * 5 }, (error, stdout, stderr) => {
+    execFile(analyzerBin, [String(content)], { maxBuffer: 1024 * 1024 * 5 }, (error, stdout, stderr) => {
         if (error) {
             console.error(`[Rust Analyze] Error: ${error}`);
-            return res.status(500).send(stderr || 'Error al analizar texto con Rust');
+            return res.status(500).send('Error al analizar texto con Rust');
         }
         try {
             const results = JSON.parse(stdout);
@@ -554,7 +707,7 @@ app.get('/ai-models', (req, res) => {
     }
 });
 
-app.post('/ai-polish', async (req, res) => {
+app.post('/ai-polish', (req, res) => {
     const { content, model } = req.body;
     if (!content) return res.status(400).send('No content provided');
 
@@ -562,54 +715,49 @@ app.post('/ai-polish', async (req, res) => {
 
     const systemPrompt = "Actúa como un editor experto y corrector de estilo. Tu misión es corregir la ortografía, gramática y mejorar la redacción del texto proporcionado, manteniendo estrictamente el estilo original (no cambies el tono ni la intención). Devuelve ÚNICAMENTE el texto corregido, sin explicaciones ni preámbulos.";
 
-    let selectedModel = model || "@cf/meta/llama-3.1-8b-instruct";
-    if (selectedModel.includes('llama-3.3-70b-instruct') || selectedModel === 'openrouter:meta-llama/llama-3.3-70b-instruct') {
-        selectedModel = "@cf/meta/llama-3.1-8b-instruct";
+    let selectedModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
+    if (selectedModel.startsWith('@cf/')) {
+        selectedModel = 'openrouter:meta-llama/llama-3.3-70b-instruct';
     }
 
-    try {
-        console.log(`[AI Polish Proxy Request] URL: ${AI_API_URL}, Model: ${selectedModel}`);
-        const response = await fetch(AI_API_URL, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json', 
-                'Authorization': `Bearer ${COMERZA_SECRET_TOKEN}` 
-            },
-            body: JSON.stringify({
-                model: selectedModel,
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: content }
-                ],
-                temperature: 0.3, // Temperatura más baja para mayor precisión ortográfica
-                max_tokens: 4096
-            })
-        });
+    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
+    const child = spawn(aichatBin, ['-S', '--model', selectedModel, '--prompt', systemPrompt], {
+        env: { ...process.env, HOME: '/home/alexdechile' }
+    });
 
-        const data = await response.json();
-        if (!response.ok) {
-            const errorLog = `[AI Polish Proxy Error] Status: ${response.status}, Data: ${JSON.stringify(data)}\n`;
-            fs.appendFileSync(path.join(__dirname, 'simply.log'), errorLog);
-            console.error(errorLog.trim());
-            return res.status(response.status).send(data.error ? data.error.message : 'Error from IA');
+    child.on('error', (err) => {
+        console.error(`[AI Polish] Spawn error:`, err);
+        if (!res.headersSent) {
+            res.status(500).send('Error interno al invocar IA');
+        }
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => { stdout += data.toString(); });
+    child.stderr.on('data', (data) => { stderr += data.toString(); });
+
+    child.on('close', (code) => {
+        if (code !== 0) {
+            console.error(`[AI Polish] Error code ${code}: ${stderr}`);
+            return res.status(500).send('Error al pulir texto con IA');
         }
 
-        let polishedText = data.choices[0].message.content.trim();
+        let polishedText = stdout.trim();
         if (polishedText.startsWith('```')) {
             polishedText = polishedText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
         }
 
         console.log(`[AI Polish] Success: Text polished`);
         res.send({ content: polishedText });
-    } catch (err) {
-        const errorLog = `[AI Polish Proxy Exception] Error: ${err.message}\n`;
-        fs.appendFileSync(path.join(__dirname, 'simply.log'), errorLog);
-        console.error(errorLog.trim());
-        res.status(500).send('Internal Server Error calling IA');
-    }
+    });
+
+    child.stdin.write(content);
+    child.stdin.end();
 });
 
-app.post('/ai-decorate', async (req, res) => {
+app.post('/ai-decorate', (req, res) => {
     const { content, model, level } = req.body;
     if (!content) return res.status(400).send('No content provided');
 
@@ -634,54 +782,49 @@ IMPORTANTE:
 3. Solo añade la capa visual y decorativa (emojis, negritas, etc.).
 4. Devuelve ÚNICAMENTE el texto decorado, sin ningún comentario ni preámbulo.`;
 
-    let selectedModel = model || "@cf/meta/llama-3.1-8b-instruct";
-    if (selectedModel.includes('llama-3.3-70b-instruct') || selectedModel === 'openrouter:meta-llama/llama-3.3-70b-instruct') {
-        selectedModel = "@cf/meta/llama-3.1-8b-instruct";
+    let selectedModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
+    if (selectedModel.startsWith('@cf/')) {
+        selectedModel = 'openrouter:meta-llama/llama-3.3-70b-instruct';
     }
 
-    try {
-        console.log(`[AI Decorate Proxy Request] URL: ${AI_API_URL}, Model: ${selectedModel}`);
-        const response = await fetch(AI_API_URL, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json', 
-                'Authorization': `Bearer ${COMERZA_SECRET_TOKEN}` 
-            },
-            body: JSON.stringify({
-                model: selectedModel,
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: content }
-                ],
-                temperature: 0.7,
-                max_tokens: 4096
-            })
-        });
+    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
+    const child = spawn(aichatBin, ['-S', '--model', selectedModel, '--prompt', systemPrompt], {
+        env: { ...process.env, HOME: '/home/alexdechile' }
+    });
 
-        const data = await response.json();
-        if (!response.ok) {
-            const errorLog = `[AI Decorate Proxy Error] Status: ${response.status}, Data: ${JSON.stringify(data)}\n`;
-            fs.appendFileSync(path.join(__dirname, 'simply.log'), errorLog);
-            console.error(errorLog.trim());
-            return res.status(response.status).send(data.error ? data.error.message : 'Error from IA');
+    child.on('error', (err) => {
+        console.error(`[AI Decorate] Spawn error:`, err);
+        if (!res.headersSent) {
+            res.status(500).send('Error interno al invocar IA');
+        }
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => { stdout += data.toString(); });
+    child.stderr.on('data', (data) => { stderr += data.toString(); });
+
+    child.on('close', (code) => {
+        if (code !== 0) {
+            console.error(`[AI Decorate] Error code ${code}: ${stderr}`);
+            return res.status(500).send('Error al decorar texto con IA');
         }
 
-        let decoratedText = data.choices[0].message.content.trim();
+        let decoratedText = stdout.trim();
         if (decoratedText.startsWith('```')) {
             decoratedText = decoratedText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
         }
 
         console.log(`[AI Decorate] Success: Text decorated`);
         res.send({ content: decoratedText });
-    } catch (err) {
-        const errorLog = `[AI Decorate Proxy Exception] Error: ${err.message}\n`;
-        fs.appendFileSync(path.join(__dirname, 'simply.log'), errorLog);
-        console.error(errorLog.trim());
-        res.status(500).send('Internal Server Error calling IA');
-    }
+    });
+
+    child.stdin.write(content);
+    child.stdin.end();
 });
 
-app.post('/ai-suggest', async (req, res) => {
+app.post('/ai-suggest', (req, res) => {
     const { content, model } = req.body;
     if (!content) return res.status(400).send('No content provided');
 
@@ -689,51 +832,46 @@ app.post('/ai-suggest', async (req, res) => {
 
     const systemPrompt = "Eres un asistente creativo y estratega de contenido. Lee el texto que el usuario ha escrito y sugiere 2 o 3 ideas adicionales, ángulos nuevos o párrafos que podrían continuar o enriquecer el post. Mantén el tono y estilo detectado. Sé breve y directo. Devuelve solo las sugerencias en formato markdown, usando viñetas si es necesario.";
 
-    let selectedModel = model || "@cf/gemma-2-9b-it";
-    if (selectedModel.includes('llama-3.3-70b-instruct') || selectedModel === 'openrouter:meta-llama/llama-3.3-70b-instruct') {
-        selectedModel = "@cf/gemma-2-9b-it"; // Usamos Gemma 2 9B por defecto para sugerencias creativas en CF
+    let selectedModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
+    if (selectedModel.startsWith('@cf/')) {
+        selectedModel = 'openrouter:meta-llama/llama-3.3-70b-instruct';
     }
 
-    try {
-        console.log(`[AI Suggest Proxy Request] URL: ${AI_API_URL}, Model: ${selectedModel}`);
-        const response = await fetch(AI_API_URL, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json', 
-                'Authorization': `Bearer ${COMERZA_SECRET_TOKEN}` 
-            },
-            body: JSON.stringify({
-                model: selectedModel,
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: content }
-                ],
-                temperature: 0.7,
-                max_tokens: 2048
-            })
-        });
+    const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
+    const child = spawn(aichatBin, ['-S', '--model', selectedModel, '--prompt', systemPrompt], {
+        env: { ...process.env, HOME: '/home/alexdechile' }
+    });
 
-        const data = await response.json();
-        if (!response.ok) {
-            const errorLog = `[AI Suggest Proxy Error] Status: ${response.status}, Data: ${JSON.stringify(data)}\n`;
-            fs.appendFileSync(path.join(__dirname, 'simply.log'), errorLog);
-            console.error(errorLog.trim());
-            return res.status(response.status).send(data.error ? data.error.message : 'Error from IA');
+    child.on('error', (err) => {
+        console.error(`[AI Suggest] Spawn error:`, err);
+        if (!res.headersSent) {
+            res.status(500).send('Error interno al invocar IA');
+        }
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => { stdout += data.toString(); });
+    child.stderr.on('data', (data) => { stderr += data.toString(); });
+
+    child.on('close', (code) => {
+        if (code !== 0) {
+            console.error(`[AI Suggest] Error code ${code}: ${stderr}`);
+            return res.status(500).send('Error al generar sugerencias con IA');
         }
 
-        let suggestion = data.choices[0].message.content.trim();
+        let suggestion = stdout.trim();
         if (suggestion.startsWith('```')) {
             suggestion = suggestion.replace(/^```[a-z]*\n/i, '').replace(/\n```$/g, '');
         }
 
         console.log(`[AI Suggest] Success: Suggestions generated`);
         res.send({ content: suggestion });
-    } catch (err) {
-        const errorLog = `[AI Suggest Proxy Exception] Error: ${err.message}\n`;
-        fs.appendFileSync(path.join(__dirname, 'simply.log'), errorLog);
-        console.error(errorLog.trim());
-        res.status(500).send('Internal Server Error calling IA');
-    }
+    });
+
+    child.stdin.write(content);
+    child.stdin.end();
 });
 
 app.post('/ai-thread', (req, res) => {
@@ -747,7 +885,16 @@ app.post('/ai-thread', (req, res) => {
     const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
     const aichatModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
 
-    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt]);
+    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt], {
+        env: { ...process.env, HOME: '/home/alexdechile' }
+    });
+
+    child.on('error', (err) => {
+        console.error(`[AI Thread] Spawn error:`, err);
+        if (!res.headersSent) {
+            res.status(500).send('Error interno al invocar IA');
+        }
+    });
 
     let stdout = '';
     let stderr = '';
@@ -758,7 +905,7 @@ app.post('/ai-thread', (req, res) => {
     child.on('close', (code) => {
         if (code !== 0) {
             console.error(`[AI Thread] Error code ${code}: ${stderr}`);
-            return res.status(500).send(stderr || 'Error al generar hilo con aichat');
+            return res.status(500).send('Error al generar hilo con IA');
         }
 
         let threadText = stdout.trim();
@@ -795,7 +942,16 @@ Devuelve ÚNICAMENTE el texto reescrito estructurado, sin introducciones, saludo
     const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
     const aichatModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
 
-    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt]);
+    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt], {
+        env: { ...process.env, HOME: '/home/alexdechile' }
+    });
+
+    child.on('error', (err) => {
+        console.error(`[AI Copywrite] Spawn error:`, err);
+        if (!res.headersSent) {
+            res.status(500).send('Error interno al invocar IA');
+        }
+    });
 
     let stdout = '';
     let stderr = '';
@@ -806,7 +962,7 @@ Devuelve ÚNICAMENTE el texto reescrito estructurado, sin introducciones, saludo
     child.on('close', (code) => {
         if (code !== 0) {
             console.error(`[AI Copywrite] Error code ${code}: ${stderr}`);
-            return res.status(500).send(stderr || 'Error al aplicar copywriting con aichat');
+            return res.status(500).send('Error al aplicar copywriting con IA');
         }
 
         let copyText = stdout.trim();
@@ -833,7 +989,16 @@ app.post('/ai-hooks', (req, res) => {
     const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
     const aichatModel = model || 'openrouter:meta-llama/llama-3.3-70b-instruct';
 
-    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt]);
+    const child = spawn(aichatBin, ['-S', '--model', aichatModel, '--prompt', systemPrompt], {
+        env: { ...process.env, HOME: '/home/alexdechile' }
+    });
+
+    child.on('error', (err) => {
+        console.error(`[AI Hooks] Spawn error:`, err);
+        if (!res.headersSent) {
+            res.status(500).send('Error interno al invocar IA');
+        }
+    });
 
     let stdout = '';
     let stderr = '';
@@ -844,7 +1009,7 @@ app.post('/ai-hooks', (req, res) => {
     child.on('close', (code) => {
         if (code !== 0) {
             console.error(`[AI Hooks] Error code ${code}: ${stderr}`);
-            return res.status(500).send(stderr || 'Error al generar hooks con aichat');
+            return res.status(500).send('Error al generar hooks con IA');
         }
 
         let hooksText = stdout.trim();
@@ -861,70 +1026,72 @@ app.post('/ai-hooks', (req, res) => {
 });
 
 app.post('/export', (req, res) => {
-    const { content, format } = req.body;
-    if (!content || !format) return res.status(400).send('Missing content or format');
+    const { content, format } = req.body || {};
+    const allowedFormats = new Set(['docx', 'xlsx', 'html']);
+    if (typeof content !== 'string' || !content || typeof format !== 'string' || !allowedFormats.has(format)) {
+        return res.status(400).send('Missing content or invalid format');
+    }
 
     const pythonBin = path.join(__dirname, 'venv', 'bin', 'python3');
     const scriptPath = path.join(__dirname, 'exporter.py');
-    const tempIn = path.join(__dirname, `temp_in_${Date.now()}.txt`);
-    const tempOut = path.join(__dirname, `temp_out_${Date.now()}.${format}`);
+    const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const tempIn = path.join(__dirname, `temp_in_${stamp}.txt`);
+    const tempOut = path.join(__dirname, `temp_out_${stamp}.${format}`);
 
-    fs.writeFileSync(tempIn, content);
+    const cleanup = () => {
+        try { if (fs.existsSync(tempIn)) fs.unlinkSync(tempIn); } catch (e) {}
+        try { if (fs.existsSync(tempOut)) fs.unlinkSync(tempOut); } catch (e) {}
+    };
 
-    const command = `${pythonBin} "${scriptPath}" "${format}" "${tempIn}" "${tempOut}"`;
-    
-    exec(command, (error, stdout, stderr) => {
+    try {
+        fs.writeFileSync(tempIn, content, { flag: 'wx' });
+    } catch (e) {
+        console.error('[Export] No se pudo crear archivo temporal:', e.message);
+        return res.status(500).send('Error during export');
+    }
+
+    execFile(pythonBin, [scriptPath, format, tempIn, tempOut], { maxBuffer: 1024 * 1024 * 5 }, (error) => {
         if (error) {
             console.error(`Export error: ${error}`);
+            cleanup();
             return res.status(500).send('Error during export');
         }
 
-        res.download(tempOut, `simply_export.${format}`, (err) => {
-            // Cleanup
-            if (fs.existsSync(tempIn)) fs.unlinkSync(tempIn);
-            if (fs.existsSync(tempOut)) fs.unlinkSync(tempOut);
+        res.download(tempOut, `simply_export.${format}`, () => {
+            cleanup();
         });
     });
 });
 
 app.post('/ask-ai', async (req, res) => {
-    const { systemPrompt, userContent, model } = req.body;
-    
-    // Si viene el modelo pesado por defecto de DeepInfra, lo mapeamos al de Cloudflare para ahorrar costes.
-    let selectedModel = model || "meta-llama/Llama-3.3-70B-Instruct-Turbo";
-    if (selectedModel === "meta-llama/Llama-3.3-70B-Instruct-Turbo") {
-        selectedModel = "@cf/meta/llama-3.1-8b-instruct";
+    const { systemPrompt, userContent, model } = req.body || {};
+    if (typeof systemPrompt !== 'string' || typeof userContent !== 'string') {
+        return res.status(400).json({ error: { message: 'systemPrompt y userContent deben ser texto' } });
     }
-    
-    try {
-        console.log(`[AI Proxy Request] URL: ${AI_API_URL}, Model: ${selectedModel}`);
-        const response = await fetch(AI_API_URL, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json', 
-                'Authorization': `Bearer ${COMERZA_SECRET_TOKEN}` 
-            },
-            body: JSON.stringify({
-                model: selectedModel,
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: userContent }
-                ],
-                temperature: 0.7,
-                max_tokens: 2048
-            })
-        });
 
-        const data = await response.json();
-        if (!response.ok) {
-            const errorLog = `[AI Proxy Error] Status: ${response.status}, Data: ${JSON.stringify(data)}\n`;
-            fs.appendFileSync(path.join(__dirname, 'simply.log'), errorLog);
-            console.error(errorLog.trim());
-            return res.status(response.status).send(data.error ? data.error.message : 'Error from IA');
+    let selectedModel = (typeof model === 'string' && model.trim()) ? model.trim() : 'nvidia2:nvidia/nemotron-3-super-120b-a12b';
+    if (selectedModel.startsWith('@cf/')) {
+        selectedModel = 'nvidia2:nvidia/nemotron-3-super-120b-a12b';
+    }
+
+    console.log(`[AI Ask-AI] Running aichat with model: ${selectedModel}`);
+
+    try {
+        const stdout = await runAichat(systemPrompt, userContent, selectedModel);
+        const content = cleanAIOutput(stdout);
+        res.json({
+            choices: [
+                {
+                    message: {
+                        content: content
+                    }
+                }
+            ]
+        });
+    } catch (err) {
+        console.error(`[AI Ask-AI] Error:`, err.message);
+        if (!res.headersSent) {
+            res.status(500).json({ error: { message: err.message } });
         }
-        res.send(data);
-    } catch (error) {
-        console.error('AI Proxy Error:', error);
-        res.status(500).send('Internal Server Error calling IA');
     }
 });

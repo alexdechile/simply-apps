@@ -429,19 +429,29 @@ main.row {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
 }
 
-.EasyMDEContainer, .CodeMirror {
+.EasyMDEContainer {
+  border: none !important;
   flex-grow: 1 !important;
   display: flex !important;
   flex-direction: column !important;
   height: 100% !important;
+  min-height: 0 !important;
+}
+
+.CodeMirror {
+  flex-grow: 1 !important;
+  height: 100% !important;
+  min-height: 0 !important;
   background: transparent !important;
   padding: 0;
   font-size: 14.5px;
   font-family: var(--font-mono);
   line-height: 1.7;
   color: var(--text-main) !important;
+  position: relative !important;
 }
 
 .CodeMirror-lines {
@@ -452,6 +462,9 @@ main.row {
 .CodeMirror-scroll {
   flex-grow: 1;
   height: 100% !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: auto !important;
 }
 
 .CodeMirror-cursor {
@@ -459,7 +472,6 @@ main.row {
 }
 
 /* EasyMDE overrides */
-.EasyMDEContainer { border: none !important; }
 .editor-toolbar { display: none !important; }
 
 /* ============ OUTPUT PANELS ============ */
@@ -881,13 +893,15 @@ body.theme-sketch .find-match { background: rgba(255, 200, 0, 0.45); }
   color: #fff;
 }
 
-/* ============ RESEARCH MODAL ============ */
-#researchModal,
-#recoverVaultModal {
+/* ============ MODALES ============ */
+.modal {
   z-index: 5000 !important;
 }
 
-#researchModal .modal-content {
+#researchModal .modal-content,
+#sessionModal .modal-content,
+#recoverVaultModal .modal-content,
+#stickyModal .modal-content {
   background: rgba(12, 12, 22, 0.97) !important;
   backdrop-filter: blur(20px);
   border: 1px solid var(--border-strong) !important;
@@ -895,7 +909,10 @@ body.theme-sketch .find-match { background: rgba(255, 200, 0, 0.45); }
   box-shadow: 0 24px 64px rgba(0,0,0,0.7) !important;
 }
 
-#researchModal.show .modal-dialog {
+#researchModal.show .modal-dialog,
+#sessionModal.show .modal-dialog,
+#recoverVaultModal.show .modal-dialog,
+#stickyModal.show .modal-dialog {
   animation: slideInDialog 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
@@ -913,6 +930,7 @@ body.theme-sketch .find-match { background: rgba(255, 200, 0, 0.45); }
   100% { transform: translateY(-30px) scale(0.97); opacity: 0; }
 }
 
+.modal-backdrop,
 .modal-backdrop.show {
   z-index: 4999 !important;
   background: rgba(0, 0, 0, 0.7) !important;

@@ -1,4 +1,23 @@
 (function() {
+  // Escapa texto que se inserta vía innerHTML para evitar XSS.
+  const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[ch]));
+
+  // Resuelve endpoints de forma segura bajo raíz o bajo subruta /simply/ (detrás de Nginx)
+  const appUrl = (endpoint) => {
+    if (typeof window.appUrl === 'function') return window.appUrl(endpoint);
+    const clean = String(endpoint ?? '').replace(/^\/+/, '');
+    if (window.location.pathname.startsWith('/simply')) {
+      return '/simply/' + clean;
+    }
+    return '/' + clean;
+  };
+
   // --- ELEMENTOS DOM ---
   const el = {
     outFB: document.getElementById('output'),
@@ -157,7 +176,7 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
     if (el.prompts.fb_neu) el.prompts.fb_neu.value = localStorage.getItem('p_fb_neu') || defaultPrompts.fb_neu;
     if (el.prompts.x) el.prompts.x.value = localStorage.getItem('p_x') || defaultPrompts.x;
     if (el.prompts.li) el.prompts.li.value = localStorage.getItem('p_li') || defaultPrompts.li;
-    
+
     // Cargar tono guardado
     const savedTone = localStorage.getItem('simply-tone') || 'fb_col';
     state.currentTone = savedTone;
@@ -238,7 +257,7 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
       tabBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       tabContents.forEach(content => content.classList.toggle('active', content.id === targetId));
-      
+
       if (targetId === 'fuentes-container') {
         state.activeChannel = 'fuentes';
         cargarFuentes();
@@ -251,6 +270,9 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
 
   // --- ACTUALIZACIÓN DE VISTAS ---
   let analyzeTimeout = null;
+  let isSyncingEditor = false;
+  let isSyncingOutput = false;
+  let syncTimeout = null;
 
   async function analizarConRust(text) {
     if (!text.trim() || text.length < 5) {
@@ -269,7 +291,7 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
       if (!response.ok) return;
 
       const data = await response.json();
-      
+
       const elRT = document.getElementById('reading-time');
       const elLD = document.getElementById('lexical-density');
       const elSC = document.getElementById('sentence-count');
@@ -288,18 +310,22 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
       }
       if (elLegVal) elLegVal.textContent = data.szigriszt_score;
       if (elLegDesc) elLegDesc.textContent = data.szigriszt_interpretation;
-      
+
       if (overusedContainer && overusedList) {
         if (data.overused_words && data.overused_words.length > 0) {
           overusedList.innerHTML = data.overused_words.map(w => {
-            return `<span class="badge bg-secondary me-1 text-white" style="font-weight: 500;" title="Sinónimos: ${w.synonyms.join(', ')}">"${w.word}" (${w.count}x ➔ intenta: ${w.synonyms.slice(0, 3).join(', ')})</span>`;
+            const synonyms = Array.isArray(w.synonyms) ? w.synonyms : [];
+            const word = escapeHtml(w.word);
+            const allSynonyms = synonyms.map(escapeHtml).join(', ');
+            const topSynonyms = synonyms.slice(0, 3).map(escapeHtml).join(', ');
+            return `<span class="badge bg-secondary me-1 text-white" style="font-weight: 500;" title="Sinónimos: ${allSynonyms}">"${word}" (${escapeHtml(w.count)}x ➔ intenta: ${topSynonyms})</span>`;
           }).join(' ');
           overusedContainer.classList.remove('d-none');
         } else {
           overusedContainer.classList.add('d-none');
         }
       }
-      
+
       if (rustPanel) rustPanel.classList.remove('d-none');
     } catch (err) {
       console.error("Error en análisis Rust:", err);
@@ -312,7 +338,12 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
 
       // Si no es un resultado de IA, actualizamos en vivo el espejo
       if (!state.isThinking && el.outFB) {
+        const prevScroll = el.outFB.scrollTop;
+        isSyncingOutput = true;
         el.outFB.textContent = markdownToFacebookUnicode(md);
+        el.outFB.scrollTop = prevScroll;
+        clearTimeout(syncTimeout);
+        syncTimeout = setTimeout(() => { isSyncingOutput = false; }, 80);
       }
 
       if (el.charCount) el.charCount.textContent = md.length;
@@ -330,8 +361,8 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
         tokenCountEl.textContent = tokens;
       }
       if (neuronCountEl) {
-        const neurons = (tokens * 0.08) / 1000; // 0.08 Neuronas por cada 1K tokens
-        neuronCountEl.textContent = neurons.toFixed(4);
+        const cost = (tokens * 0.59) / 1000000; // $0.59 por 1M de tokens
+        neuronCountEl.textContent = cost.toFixed(5);
       }
 
       // Debounce para el análisis pesado en Rust
@@ -498,9 +529,6 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
   });
 
   // --- SINCRONIZACIÓN Y UI ---
-  let isSyncingEditor = false;
-  let isSyncingOutput = false;
-
   function getActiveOutput() {
     if (state.activeChannel === 'fb') return el.outFB;
     if (state.activeChannel === 'x') return el.outX;
@@ -521,72 +549,60 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
     const menu = el.formatMenu;
     if (!menu) return;
 
-    // 1. Barra Flotante
+    // Barra Flotante
     if (cm.somethingSelected()) {
       const cursor = cm.cursorCoords(false, 'window');
       menu.classList.add('visible');
-      
+
       const menuWidth = menu.offsetWidth || 340;
       const menuHeight = menu.offsetHeight || 45;
-      
+
       let left = cursor.left + (cursor.right - cursor.left) / 2 - menuWidth / 2;
       let top = cursor.top - menuHeight - 15;
-      
+
       // Ajuste horizontal: no salirse por los lados
       if (left < 10) left = 10;
       if (left + menuWidth > window.innerWidth - 10) left = window.innerWidth - menuWidth - 10;
-      
+
       // Ajuste vertical: si no cabe arriba, ponerlo debajo de la selección
       if (top < 10) top = cursor.bottom + 10;
       // Si tampoco cabe abajo, forzar al borde inferior visible
       if (top + menuHeight > window.innerHeight - 10) top = window.innerHeight - menuHeight - 10;
-      
+
       menu.style.left = left + 'px';
       menu.style.top = top + 'px';
       menu.style.transform = 'none';
     } else {
       menu.classList.remove('visible');
     }
-
-    // 2. Sincronización de scroll al mover el cursor (hacia abajo)
-    const activeOutput = getActiveOutput();
-    if (activeOutput) {
-      const cursor = cm.getCursor();
-      const coords = cm.charCoords(cursor, 'local');
-      const scrollInfo = cm.getScrollInfo();
-      const scrollPercent = coords.top / (scrollInfo.height - scrollInfo.clientHeight);
-      
-      if (!isNaN(scrollPercent)) {
-        activeOutput.scrollTop = scrollPercent * (activeOutput.scrollHeight - activeOutput.clientHeight);
-      }
-    }
   });
 
   easyMDE.codemirror.on('scroll', (cm) => {
-    if (isSyncingEditor) {
-      isSyncingEditor = false;
-      return;
-    }
+    if (isSyncingEditor) return;
     isSyncingOutput = true;
+    clearTimeout(syncTimeout);
     syncScroll(cm.getScrollerElement(), getActiveOutput());
+    syncTimeout = setTimeout(() => { isSyncingOutput = false; }, 80);
   });
 
-  // Permitir scroll desde el output hacia el editor
+  // Permitir scroll desde el output hacia el editor SOLO si el usuario está scrolleando en el output
   [el.outFB, el.outX, el.outLI].forEach(output => {
     if (!output) return;
     output.addEventListener('scroll', () => {
-      if (isSyncingOutput) {
-        isSyncingOutput = false;
-        return;
-      }
-      isSyncingEditor = true;
+      if (isSyncingOutput) return;
       const cm = easyMDE.codemirror;
+      // Si el usuario está trabajando en el editor, el output nunca debe desplazar el editor
+      if (cm.hasFocus()) return;
+
+      isSyncingEditor = true;
+      clearTimeout(syncTimeout);
       const scroller = cm.getScrollerElement();
       const outputHeight = output.scrollHeight - output.clientHeight;
       if (outputHeight > 0) {
         const scrollPercent = output.scrollTop / outputHeight;
         scroller.scrollTop = scrollPercent * (scroller.scrollHeight - scroller.clientHeight);
       }
+      syncTimeout = setTimeout(() => { isSyncingEditor = false; }, 80);
     });
   });
 
@@ -632,7 +648,10 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
       menu.innerHTML = '<li><h6 class="dropdown-header">Modelo de IA</h6></li>';
       for (const [client, clientModels] of Object.entries(groups)) {
         const header = document.createElement('li');
-        header.innerHTML = `<h6 class="dropdown-header text-capitalize">${client}</h6>`;
+        const headerTitle = document.createElement('h6');
+        headerTitle.className = 'dropdown-header text-capitalize';
+        headerTitle.textContent = client;
+        header.appendChild(headerTitle);
         menu.appendChild(header);
 
         for (const m of clientModels) {
@@ -686,7 +705,8 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
         const data = await response.json();
 
         if (data.content && data.content !== content) {
-          if (confirm(`✨ El texto ha sido pulido y corregido.\n\n¿Quieres inyectar el resultado en el editor?`)) {
+          const accept = await showAIPreviewModal('✨ Texto Pulido y Corregido', data.content, 'Inyectar en el editor');
+          if (accept) {
             const cm = easyMDE.codemirror;
             cm.getDoc().setValue(data.content);
             cm.refresh();
@@ -711,7 +731,7 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
     return new Promise((resolve) => {
       const overlay = document.createElement('div');
       overlay.className = 'custom-modal-overlay';
-      
+
       overlay.innerHTML = `
         <div class="custom-modal-box">
           <div class="custom-modal-title">🧂 Estilo y Decoración</div>
@@ -733,17 +753,17 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
           <button class="custom-modal-cancel-btn">Cancelar</button>
         </div>
       `;
-      
+
       document.body.appendChild(overlay);
-      
+
       // Activar animación
       setTimeout(() => overlay.classList.add('active'), 10);
-      
+
       const cleanUp = () => {
         overlay.classList.remove('active');
         setTimeout(() => overlay.remove(), 300);
       };
-      
+
       overlay.querySelectorAll('.custom-modal-option-btn').forEach(btn => {
         btn.onclick = () => {
           const level = btn.getAttribute('data-level');
@@ -751,16 +771,74 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
           resolve(level);
         };
       });
-      
+
       overlay.querySelector('.custom-modal-cancel-btn').onclick = () => {
         cleanUp();
         resolve(null);
       };
-      
+
       overlay.onclick = (e) => {
         if (e.target === overlay) {
           cleanUp();
           resolve(null);
+        }
+      };
+    });
+  }
+
+  // --- DYNAMIC PREVIEW MODAL PARA VER RESULTADOS DE IA ---
+  function showAIPreviewModal(title, content, actionLabel = 'Inyectar en el editor', isAppend = false) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'custom-modal-overlay';
+
+      overlay.innerHTML = `
+        <div class="custom-modal-box" style="max-width: 650px; width: 90%; text-align: left; display: flex; flex-direction: column; max-height: 85vh;">
+          <div class="custom-modal-title" style="margin-bottom: 0.5rem; text-align: center;">${title}</div>
+          <div class="custom-modal-desc" style="margin-bottom: 1rem; text-align: center;">
+            ${isAppend ? 'Revisa la propuesta de la IA antes de añadirla al final:' : 'Revisa el resultado generado por la IA antes de reemplazar tu texto:'}
+          </div>
+
+          <div style="flex: 1; min-height: 150px; margin-bottom: 1.5rem; display: flex; flex-direction: column;">
+            <textarea readonly style="width: 100%; flex: 1; min-height: 250px; max-height: 450px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 6px; padding: 0.8rem; color: var(--text-main); font-family: monospace; font-size: 0.9rem; resize: vertical; outline: none; line-height: 1.4; overflow-y: auto;" id="ai-preview-textarea"></textarea>
+          </div>
+
+          <div class="d-flex justify-content-between gap-3">
+            <button class="btn btn-secondary flex-grow-1 custom-modal-cancel-btn" style="padding: 0.6rem; border-radius: 6px;">
+              ❌ Cancelar (Salvar mi texto)
+            </button>
+            <button class="btn btn-primary flex-grow-1 custom-modal-accept-btn" style="padding: 0.6rem; border-radius: 6px; background-color: var(--primary-color) !important; border-color: var(--primary-color) !important;">
+              ✔️ ${actionLabel}
+            </button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+      overlay.querySelector('#ai-preview-textarea').value = content;
+
+      // Activar animación
+      setTimeout(() => overlay.classList.add('active'), 10);
+
+      const cleanUp = () => {
+        overlay.classList.remove('active');
+        setTimeout(() => overlay.remove(), 300);
+      };
+
+      overlay.querySelector('.custom-modal-accept-btn').onclick = () => {
+        cleanUp();
+        resolve(true);
+      };
+
+      overlay.querySelector('.custom-modal-cancel-btn').onclick = () => {
+        cleanUp();
+        resolve(false);
+      };
+
+      overlay.onclick = (e) => {
+        if (e.target === overlay) {
+          cleanUp();
+          resolve(false);
         }
       };
     });
@@ -794,7 +872,8 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
         const data = await response.json();
 
         if (data.content && data.content !== content) {
-          if (confirm(`🧂 El texto ha sido decorado con sal y pimienta.\n\n¿Quieres inyectar el resultado en el editor?`)) {
+          const accept = await showAIPreviewModal('🧂 Texto Decorado', data.content, 'Inyectar en el editor');
+          if (accept) {
             const cm = easyMDE.codemirror;
             cm.getDoc().setValue(data.content);
             cm.refresh();
@@ -839,7 +918,8 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
         const data = await response.json();
 
         if (data.content) {
-          if (confirm(`💡 Sugerencias de la IA:\n\n${data.content}\n\n¿Quieres añadir estas ideas al final del editor?`)) {
+          const accept = await showAIPreviewModal('💡 Sugerencias de la IA', data.content, 'Añadir al final', true);
+          if (accept) {
             const cm = easyMDE.codemirror;
             const currentVal = cm.getValue();
             const newVal = currentVal + '\n\n---\n\n💡 **Sugerencias:**\n' + data.content;
@@ -887,7 +967,8 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
         const data = await response.json();
 
         if (data.content && data.content !== content) {
-          if (confirm(`🐦 Se generó un hilo de X.\n\n¿Quieres inyectar el resultado en el editor?`)) {
+          const accept = await showAIPreviewModal('🐦 Hilo de X Generado', data.content, 'Inyectar en el editor');
+          if (accept) {
             const cm = easyMDE.codemirror;
             cm.getDoc().setValue(data.content);
             cm.refresh();
@@ -932,7 +1013,9 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
       const data = await response.json();
 
       if (data.content && data.content !== content) {
-        if (confirm(`${formula === 'pas' ? '🤝' : '🎯'} Estilo aplicado exitosamente.\n\n¿Quieres inyectar el resultado en el editor?`)) {
+        const title = formula === 'pas' ? '🤝 Copywriting PAS' : '🎯 Copywriting AIDA';
+        const accept = await showAIPreviewModal(title, data.content, 'Inyectar en el editor');
+        if (accept) {
           const cm = easyMDE.codemirror;
           cm.getDoc().setValue(data.content);
           cm.refresh();
@@ -984,7 +1067,8 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
         const data = await response.json();
 
         if (data.content) {
-          if (confirm(`🪝 Propuestas de ganchos (Hooks):\n\n${data.content}\n\n¿Quieres añadir estas propuestas al final del editor?`)) {
+          const accept = await showAIPreviewModal('🪝 Propuestas de Ganchos (Hooks)', data.content, 'Añadir al final', true);
+          if (accept) {
             const cm = easyMDE.codemirror;
             const currentVal = cm.getValue();
             const newVal = currentVal + '\n\n---\n\n🪝 **Propuestas de Ganchos (Hooks):**\n' + data.content;
@@ -1058,7 +1142,7 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
       // Obtener prompt según tono
       const tonePromptEl = el.prompts[state.currentTone];
       const systemPrompt = tonePromptEl ? tonePromptEl.value : defaultPrompts[state.currentTone];
-      
+
       const userInstruction = `Reescribe el siguiente borrador para Facebook aplicando tu personalidad y reglas de estilo. Preserva el mensaje principal, los argumentos clave y la intención del original. No agregues información nueva.
 
 BORRADOR:
@@ -1066,8 +1150,9 @@ ${text}`;
 
       let fbPost = await callAI(systemPrompt, userInstruction);
       fbPost = fbPost.replace(/^```markdown\n?/g, '').replace(/```$/g, '').trim();
-      
-      if (confirm(`🧠 La IA ha procesado el texto con éxito.\n\n¿Quieres inyectar el resultado en el editor?`)) {
+
+      const accept = await showAIPreviewModal('🧠 Post de Facebook Generado', fbPost, 'Inyectar en el editor');
+      if (accept) {
         const cm = easyMDE.codemirror;
         const scrollInfo = cm.getScrollInfo();
         cm.getDoc().setValue(fbPost);
@@ -1076,13 +1161,13 @@ ${text}`;
         el.outFB.textContent = markdownToFacebookUnicode(fbPost);
         if (el.charCount) el.charCount.textContent = fbPost.length;
       }
-    } catch (e) { 
+    } catch (e) {
       console.error(e);
-      alert('Error en la IA: ' + e.message); 
+      alert('Error en la IA: ' + e.message);
     }
-    finally { 
-      state.isThinking = false; 
-      el.pensar.textContent = '🧠 Pensar'; 
+    finally {
+      state.isThinking = false;
+      el.pensar.textContent = '🧠 Pensar';
     }
   }
   el.pensar.onclick = consultarIA;
@@ -1113,7 +1198,8 @@ ${text}`;
 
         const data = await response.json();
 
-        if (confirm(`🎵 Post generado por IA.\n\n¿Inyectar en el editor?`)) {
+        const accept = await showAIPreviewModal('🎵 Post Musical Generado', data.content, 'Inyectar en el editor');
+        if (accept) {
           const cm = easyMDE.codemirror;
           cm.getDoc().setValue(data.content);
           cm.refresh();
@@ -1155,7 +1241,8 @@ ${text}`;
 
         const data = await response.json();
 
-        if (confirm(`💻 Crónica tecnológica generada.\n\n¿Inyectar en el editor?`)) {
+        const accept = await showAIPreviewModal('💻 Crónica Tecnológica Generada', data.content, 'Inyectar en el editor');
+        if (accept) {
           const cm = easyMDE.codemirror;
           cm.getDoc().setValue(data.content);
           cm.refresh();
@@ -1197,7 +1284,8 @@ ${text}`;
 
         const data = await response.json();
 
-        if (confirm(`📰 Análisis de noticias generado.\n\n¿Inyectar en el editor?`)) {
+        const accept = await showAIPreviewModal('📰 Análisis de Noticias Generado', data.content, 'Inyectar en el editor');
+        if (accept) {
           const cm = easyMDE.codemirror;
           cm.getDoc().setValue(data.content);
           cm.refresh();
@@ -1313,13 +1401,6 @@ ${text}`;
     const rawTopic = prompt('¿Qué tema quieres investigar con Scrapling?');
     if (!rawTopic) return;
 
-    let apiKey = localStorage.getItem('deepinfra-api-key');
-    if (!apiKey) {
-      apiKey = prompt('API Key de DeepInfra:');
-      if (apiKey) localStorage.setItem('deepinfra-api-key', apiKey);
-      else return;
-    }
-
     const originalText = el.investigar.textContent;
     el.investigar.textContent = '🧠 Planificando...';
     el.investigar.disabled = true;
@@ -1327,14 +1408,14 @@ ${text}`;
 
     try {
       // PASO 1: Planificación (Pedimos Query + Dominios + Categoría)
-      const planPrompt = `Eres un estratega de investigación. Analiza el tema: "${rawTopic}". 
+      const planPrompt = `Eres un estratega de investigación. Analiza el tema: "${rawTopic}".
 Responde con un objeto JSON (solo el JSON) con este formato:
 {
   "query": "texto de búsqueda simple para google",
   "tendencias": "3 dominios relevantes separados por comas (ej: Neurociencia, Nutrición, Psicología)",
   "category": "elige una del siguiente listado: ciencia, derecho, economia, historia, tecnologia, datos, general"
 }`;
-      
+
       const planRaw = await callAI("Estratega de Investigación", planPrompt);
       let plan;
       try {
@@ -1379,9 +1460,9 @@ Responde con un objeto JSON (solo el JSON) con este formato:
 
           // PASO 4: Síntesis adaptativa
           showResearchLoading('Sintetizando reporte final con IA...');
-          
+
           const synthesizePrompt = `Eres donalex:1717, un adulto con visión crítica, buen lector, políglota y estudioso constante de la realidad. Escribes con una voz humana, informada y consciente del mundo.
-Investigación: "${rawTopic}". 
+Investigación: "${rawTopic}".
 ENFOQUE REQUERIDO: ${finalTrends}.
 DATOS:
 ---
@@ -1473,7 +1554,7 @@ Genera un reporte "Simply Style" con esta estructura:
   function setupCopyButton(btnId, targetEl) {
     const btn = document.getElementById(btnId);
     if (!btn || !targetEl) return;
-    
+
     btn.onclick = () => {
       const text = targetEl.textContent;
       copyToClipboard(text, btn);
@@ -1483,17 +1564,17 @@ Genera un reporte "Simply Style" con esta estructura:
   function setupCopyPlainTextButton(btnId) {
     const btn = document.getElementById(btnId);
     if (!btn) return;
-    
+
     btn.onclick = () => {
       const md = easyMDE.value();
       if (!md) return;
-      
+
       let text = md;
       // Remover formato markdown estándar
       text = text.replace(/(\*\*\*|___)(.*?)\1/g, '$2');
       text = text.replace(/(\*\*|__)(.*?)\1/g, '$2');
       text = text.replace(/(\*|_)(.*?)\1/g, '$2');
-      
+
       // Remover etiquetas especiales de unicode
       text = text.replace(/\{s\}(.*?)\{\/s\}/g, '$1');
       text = text.replace(/\{f\}(.*?)\{\/f\}/g, '$1');
@@ -1502,10 +1583,10 @@ Genera un reporte "Simply Style" con esta estructura:
       text = text.replace(/\{c\}(.*?)\{\/c\}/g, '$1');
       text = text.replace(/\{sq\}(.*?)\{\/sq\}/g, '$1');
       text = text.replace(/\{fw\}(.*?)\{\/fw\}/g, '$1');
-      
+
       // Remover tachado
       text = text.replace(/~~(.*?)~~/g, '$1');
-      
+
       copyToClipboard(text, btn);
     };
   }
@@ -1558,7 +1639,7 @@ Genera un reporte "Simply Style" con esta estructura:
         case 'boldupper': wrapped = `**${selection.toUpperCase()}**`; break;
         default: wrapped = selection;
       }
-      
+
       cm.replaceSelection(wrapped);
       el.formatMenu.classList.remove('visible');
       actualizarVistas();
@@ -1664,35 +1745,36 @@ Genera un reporte "Simply Style" con esta estructura:
       try {
         const response = await fetch('vault/posts');
         const data = await response.json();
-        
+
         const postsList = document.getElementById('vaultPostsList');
         if (!data.posts || data.posts.length === 0) {
           postsList.innerHTML = '<div class="list-group-item text-center text-secondary small">No hay posts en el Vault</div>';
           return;
         }
-        
+
         let html = '';
         data.posts.forEach(post => {
+          const safeName = escapeHtml(post.name);
           html += `
-            <a href="javascript:void(0)" class="list-group-item list-group-item-action bg-dark text-white border-secondary mb-1" data-filename="${post.name}">
+            <a href="javascript:void(0)" class="list-group-item list-group-item-action bg-dark text-white border-secondary mb-1" data-filename="${safeName}">
               <div class="d-flex w-100 justify-content-between">
-                <h6 class="mb-1">${post.name}</h6>
+                <h6 class="mb-1">${safeName}</h6>
                 <small class="text-muted">${new Date(post.mtime).toLocaleDateString()}</small>
               </div>
-              <p class="mb-1 small line-clamp-2">${post.content ? post.content.substring(0, 100) + '...' : ''}</p>
+              <p class="mb-1 small line-clamp-2">${post.content ? escapeHtml(String(post.content).substring(0, 100)) + '...' : ''}</p>
             </a>
           `;
         });
         postsList.innerHTML = html;
-        
+
         // Manejar clic en un post
         postsList.querySelectorAll('a').forEach(item => {
           item.onclick = async (e) => {
             e.preventDefault();
             const filename = item.dataset.filename;
-            const postResponse = await fetch(`vault/post/${filename}`);
+            const postResponse = await fetch(`vault/post/${encodeURIComponent(filename)}`);
             const postData = await postResponse.json();
-            
+
             if (postData.content) {
               easyMDE.value(postData.content);
               actualizarVistas();
@@ -1702,7 +1784,7 @@ Genera un reporte "Simply Style" con esta estructura:
             }
           };
         });
-        
+
         // Mostrar el modal después de cargar la lista
         const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('recoverVaultModal'));
         modal.show();
@@ -1784,12 +1866,12 @@ Genera un reporte "Simply Style" con esta estructura:
   function markdownToFacebookUnicode(md) {
     if (!md) return '';
     let processed = md;
-    
+
     // Negritas y Cursivas Estándar
     processed = processed.replace(/(\*\*\*|___)(.*?)\1/g, (_, __, text) => toBold(toItalic(text)));
     processed = processed.replace(/(\*\*|__)(.*?)\1/g, (_, __, text) => toBold(text));
     processed = processed.replace(/(\*|_)(.*?)\1/g, (_, __, text) => toItalic(text));
-    
+
     // Etiquetas Especiales Unicode
     processed = processed.replace(/\{s\}(.*?)\{\/s\}/g, (_, text) => applyStyle(text, 'script'));
     processed = processed.replace(/\{f\}(.*?)\{\/f\}/g, (_, text) => applyStyle(text, 'fraktur'));
@@ -1798,10 +1880,10 @@ Genera un reporte "Simply Style" con esta estructura:
     processed = processed.replace(/\{c\}(.*?)\{\/c\}/g, (_, text) => applyStyle(text, 'circled'));
     processed = processed.replace(/\{sq\}(.*?)\{\/sq\}/g, (_, text) => applyStyle(text, 'squared'));
     processed = processed.replace(/\{fw\}(.*?)\{\/fw\}/g, (_, text) => applyStyle(text, 'fullwidth'));
-    
+
     // Tachado (Facebook usa ~texto~)
     processed = processed.replace(/~~(.*?)~~/g, (_, text) => `~${text}~`);
-    
+
     return processed;
   }
 
@@ -1851,10 +1933,10 @@ Genera un reporte "Simply Style" con esta estructura:
   }
   cargarContenidoPersistente();
 
-  document.getElementById('pegarBtn').onclick = async () => { 
+  document.getElementById('pegarBtn').onclick = async () => {
     try {
       const text = await navigator.clipboard.readText();
-      easyMDE.value(text); 
+      easyMDE.value(text);
       actualizarVistas();
     } catch (e) { alert('No se pudo acceder al portapapeles'); }
   };
@@ -1866,9 +1948,9 @@ Genera un reporte "Simply Style" con esta estructura:
     }
   };
 
-  document.getElementById('themeToggle').onclick = () => { 
-    document.body.classList.toggle('theme-sketch'); 
-    localStorage.setItem('simply-theme', document.body.classList.contains('theme-sketch') ? 'sketch' : 'dark'); 
+  document.getElementById('themeToggle').onclick = () => {
+    document.body.classList.toggle('theme-sketch');
+    localStorage.setItem('simply-theme', document.body.classList.contains('theme-sketch') ? 'sketch' : 'dark');
   };
   if (localStorage.getItem('simply-theme') === 'sketch') document.body.classList.add('theme-sketch');
 
@@ -1907,7 +1989,7 @@ Genera un reporte "Simply Style" con esta estructura:
   async function cargarFuentes() {
     try {
       sourcesCountBadge.textContent = 'Cargando...';
-      const res = await fetch('api/fuentes');
+      const res = await fetch(appUrl('api/fuentes'));
       if (!res.ok) throw new Error('No se pudo cargar fuentes.md');
       const data = await res.json();
       fuentesMarkdown.value = data.content;
@@ -1925,7 +2007,7 @@ Genera un reporte "Simply Style" con esta estructura:
     saveFuentesBtn.textContent = '💾 Guardando...';
 
     try {
-      const res = await fetch('api/fuentes', {
+      const res = await fetch(appUrl('api/fuentes'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content })
@@ -1969,7 +2051,7 @@ Instrucciones:
 1. Recomienda fuentes confiables con sus URLs reales y válidas.
 2. Da el formato adecuado (Markdown de tabla o lista como el que se usa en fuentes.md).
 3. Sé breve y estructurado.`;
-        
+
         const responseText = await callAI(systemPrompt, promptText);
         aiSourcesOutput.textContent = responseText;
       } catch (err) {
@@ -1981,7 +2063,238 @@ Instrucciones:
     };
   }
 
+  // ===== SESIONES COMPARTIDAS (QR · FIFO) =====
+  function capturarEstadoSesion() {
+    const p = el.prompts;
+    return {
+      v: 1,
+      createdAt: new Date().toISOString(),
+      editor: easyMDE.value(),
+      outputs: {
+        fb: el.outFB.textContent,
+        x: el.outX.textContent,
+        li: el.outLI.textContent
+      },
+      activeTab: (document.querySelector('.tab-btn.active') || {}).dataset?.target || 'output-fb-container',
+      tone: state.currentTone,
+      model: localStorage.getItem('simply-ai-model'),
+      theme: localStorage.getItem('simply-theme') || 'dark',
+      prompts: {
+        fb_col: p.fb_col ? p.fb_col.value : '',
+        fb_com: p.fb_com ? p.fb_com.value : '',
+        fb_neu: p.fb_neu ? p.fb_neu.value : '',
+        x: p.x ? p.x.value : '',
+        li: p.li ? p.li.value : ''
+      }
+    };
+  }
+
+  function aplicarEstadoSesion(sess) {
+    if (!sess || typeof sess !== 'object') return;
+
+    if (typeof sess.editor === 'string') {
+      easyMDE.value(sess.editor);
+      localStorage.setItem('simply-editor-content', sess.editor);
+    }
+
+    if (sess.outputs && typeof sess.outputs === 'object') {
+      if (typeof sess.outputs.fb === 'string') el.outFB.textContent = sess.outputs.fb;
+      if (typeof sess.outputs.x === 'string') {
+        el.outX.textContent = sess.outputs.x;
+        localStorage.setItem('simply-x-content', sess.outputs.x);
+        if (el.xCounter) el.xCounter.textContent = 280 - sess.outputs.x.length;
+      }
+      if (typeof sess.outputs.li === 'string') {
+        el.outLI.textContent = sess.outputs.li;
+        localStorage.setItem('simply-li-content', sess.outputs.li);
+      }
+    }
+
+    if (typeof sess.tone === 'string') {
+      state.currentTone = sess.tone;
+      localStorage.setItem('simply-tone', sess.tone);
+      actualizarLabelTono(sess.tone);
+    }
+
+    if (typeof sess.model === 'string') {
+      localStorage.setItem('simply-ai-model', sess.model);
+      const client = sess.model.split(':')[0] || 'ai';
+      const modelLabel = document.getElementById('currentModelLabel');
+      if (modelLabel) modelLabel.textContent = client.charAt(0).toUpperCase() + client.slice(1);
+    }
+
+    if (sess.theme) {
+      document.body.classList.toggle('theme-sketch', sess.theme === 'sketch');
+      localStorage.setItem('simply-theme', sess.theme);
+    }
+
+    if (sess.prompts && typeof sess.prompts === 'object') {
+      const map = { fb_col: 'p_fb_col', fb_com: 'p_fb_com', fb_neu: 'p_fb_neu', x: 'p_x', li: 'p_li' };
+      for (const key of Object.keys(map)) {
+        if (typeof sess.prompts[key] === 'string') {
+          localStorage.setItem(map[key], sess.prompts[key]);
+          const textarea = el.prompts[key];
+          if (textarea) textarea.value = sess.prompts[key];
+        }
+      }
+    }
+
+    if (typeof sess.activeTab === 'string') {
+      const btn = Array.from(tabBtns).find(b => b.getAttribute('data-target') === sess.activeTab);
+      if (btn) btn.click();
+    }
+
+    actualizarVistas();
+  }
+
+  function renderizarSessionsLista() {
+    const listEl = document.getElementById('sessionList');
+    const countEl = document.getElementById('sessionCount');
+    if (!listEl) return;
+    fetch(appUrl('api/session'))
+      .then(r => r.json())
+      .then(data => {
+        const items = data.sessions || [];
+        if (countEl) countEl.textContent = items.length;
+        if (items.length === 0) {
+          listEl.innerHTML = '<div class="list-group-item text-center text-secondary small">Sin sesiones guardadas.</div>';
+          return;
+        }
+        listEl.innerHTML = items.slice().reverse().map(s => {
+          let date = s.createdAt;
+          try { date = new Date(s.createdAt).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' }); } catch (e) {}
+          return `<div class="list-group-item bg-dark text-white d-flex justify-content-between align-items-center" style="border-color: var(--border-color);">
+            <div>
+              <span class="fw-bold small" style="font-family: var(--font-mono);">${escapeHtml(s.id)}</span>
+              <span class="small text-secondary ms-2">${escapeHtml(date)}</span>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-outline-secondary session-open" data-id="${escapeHtml(s.id)}">Abrir</button>
+              <button class="btn btn-sm btn-outline-danger session-del" data-id="${escapeHtml(s.id)}">🗑</button>
+            </div>
+          </div>`;
+        }).join('');
+        listEl.querySelectorAll('.session-open').forEach(b => {
+          b.onclick = async () => {
+            try {
+              const res = await fetch(appUrl('api/session/' + encodeURIComponent(b.dataset.id)));
+              if (!res.ok) throw new Error('Error al cargar la sesión');
+              const data = await res.json();
+              aplicarEstadoSesion(data.state || {});
+              const modalEl = document.getElementById('sessionModal');
+              if (modalEl && window.bootstrap) {
+                const inst = bootstrap.Modal.getInstance(modalEl);
+                if (inst) inst.hide();
+              }
+              window.history.pushState(null, '', '?session=' + encodeURIComponent(b.dataset.id));
+            } catch (e) {
+              console.error('Error al abrir sesión en vivo:', e);
+              window.location.href = '?session=' + encodeURIComponent(b.dataset.id);
+            }
+          };
+        });
+        listEl.querySelectorAll('.session-del').forEach(b => {
+          b.onclick = async () => {
+            await fetch(appUrl('api/session/' + encodeURIComponent(b.dataset.id)), { method: 'DELETE' });
+            renderizarSessionsLista();
+          };
+        });
+      })
+      .catch(err => {
+        listEl.innerHTML = '<div class="list-group-item text-center text-danger small">Error al listar sesiones: ' + escapeHtml(err.message) + '</div>';
+      });
+  }
+
+  async function crearSesionSincronizada() {
+    const createBtn = document.getElementById('sessionCreateBtn');
+    if (!createBtn) return;
+    const originalText = createBtn.textContent;
+    createBtn.disabled = true;
+    createBtn.textContent = '⏳ Creando...';
+    try {
+      const stateSnapshot = capturarEstadoSesion();
+      const res = await fetch(appUrl('api/session'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: stateSnapshot })
+      });
+      if (!res.ok) throw new Error('El servidor no guardó la sesión');
+      const data = await res.json();
+
+      const qrContainer = document.getElementById('sessionQrContainer');
+      const urlInput = document.getElementById('sessionUrlInput');
+      const canvas = document.getElementById('sessionQrCanvas');
+      if (qrContainer) qrContainer.classList.remove('d-none');
+
+      // Si el servidor devolvió una URL local/loopback, preferir la URL externa actual del navegador
+      const shareUrl = new URL(window.location.href);
+      shareUrl.searchParams.set('session', data.id);
+      const targetUrl = (data.url && !data.url.includes('127.0.0.1') && !data.url.includes('localhost'))
+        ? data.url
+        : shareUrl.toString();
+
+      if (urlInput) urlInput.value = targetUrl;
+      if (canvas && typeof QRCode !== 'undefined') {
+        QRCode.toCanvas(canvas, targetUrl, { width: 240, margin: 1 }, (err) => {
+          if (err) console.error('[Sessions] Error al generar QR:', err);
+        });
+      }
+      renderizarSessionsLista();
+    } catch (err) {
+      alert('No se pudo crear la sesión: ' + err.message);
+    } finally {
+      createBtn.disabled = false;
+      createBtn.textContent = originalText;
+    }
+  }
+
+  const sessionBtn = document.getElementById('sessionBtn');
+  if (sessionBtn) {
+    sessionBtn.onclick = () => {
+      const modalEl = document.getElementById('sessionModal');
+      if (modalEl) {
+        if (window.bootstrap) {
+          bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        } else {
+          modalEl.classList.add('show');
+          modalEl.style.display = 'block';
+        }
+      }
+      renderizarSessionsLista();
+    };
+  }
+
+  const sessionCreateBtn = document.getElementById('sessionCreateBtn');
+  if (sessionCreateBtn) sessionCreateBtn.onclick = crearSesionSincronizada;
+
+  const sessionReloadBtn = document.getElementById('sessionReloadBtn');
+  if (sessionReloadBtn) sessionReloadBtn.onclick = renderizarSessionsLista;
+
+  const sessionCopyUrlBtn = document.getElementById('sessionCopyUrlBtn');
+  if (sessionCopyUrlBtn) {
+    sessionCopyUrlBtn.onclick = () => {
+      const urlInput = document.getElementById('sessionUrlInput');
+      if (urlInput && urlInput.value) copyToClipboard(urlInput.value, sessionCopyUrlBtn);
+    };
+  }
+
+  async function abrirSesionPorUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('session');
+    if (!id) return;
+    try {
+      const res = await fetch(appUrl('api/session/' + encodeURIComponent(id)));
+      if (res.status === 404) return;
+      if (!res.ok) throw new Error('Error al abrir sesión');
+      const data = await res.json();
+      aplicarEstadoSesion(data.state || {});
+    } catch (err) {
+      console.error('No se pudo restaurar la sesión:', err);
+    }
+  }
+
   loadPrompts();
   actualizarVistas();
+  abrirSesionPorUrl();
 
   })();

@@ -3,6 +3,27 @@
  * Mermaid.js + Zoom/Pan con rueda + arrastrar + botones
  */
 
+// Escapa texto controlado por el usuario antes de insertarlo con innerHTML.
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[ch]));
+}
+
+// Resuelve endpoints bajo la raíz o bajo /simply/ cuando pasa por Nginx
+function appUrl(endpoint) {
+  const clean = String(endpoint ?? '').replace(/^\/+/, '');
+  if (window.location.pathname.startsWith('/simply')) {
+    return '/simply/' + clean;
+  }
+  return '/' + clean;
+}
+window.appUrl = appUrl;
+
 // =============================================
 // DEFINICIONES DE DIAGRAMAS
 // =============================================
@@ -585,7 +606,7 @@ function closeModalAndRefresh() {
 // =============================================
 async function loadStickies() {
   try {
-    const res = await fetch('/api/stickies');
+    const res = await fetch(appUrl('api/stickies'));
     currentStickies = res.ok ? (await res.json() || []) : [];
   } catch (e) {
     currentStickies = [];
@@ -595,7 +616,7 @@ async function loadStickies() {
 
 async function persistStickies() {
   try {
-    await fetch('/api/stickies', {
+    await fetch(appUrl('api/stickies'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(currentStickies)
@@ -635,11 +656,12 @@ function renderStickies() {
 
     const el = document.createElement('div');
     el.dataset.id = sticky.id;
+    const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(sticky.color || '') ? sticky.color : '#fef08a';
     el.style.cssText = `
       position: absolute;
       left: ${x + 32}px;
       top: ${y}px;
-      background: ${sticky.color || '#fef08a'};
+      background: ${safeColor};
       color: #1a1a1a;
       border-radius: 4px;
       padding: 5px 9px;
@@ -657,9 +679,9 @@ function renderStickies() {
     `;
     el.innerHTML = `
       <div style="font-weight:700;font-size:0.6rem;opacity:0.5;text-transform:uppercase;margin-bottom:2px;">
-        📌 ${sticky.nodeLabel.substring(0, 18)}
+        📌 ${escapeHtml(String(sticky.nodeLabel || '').substring(0, 18))}
       </div>
-      <div>${sticky.text}</div>
+      <div>${escapeHtml(sticky.text)}</div>
     `;
 
     el.addEventListener('mouseenter', () => el.style.boxShadow = '3px 5px 16px rgba(0,0,0,0.7)');
@@ -676,7 +698,7 @@ function renderStickies() {
       const colorPreview = document.getElementById('stickyColorPreview');
       if (labelEl) labelEl.textContent = sticky.nodeLabel;
       if (textInput) textInput.value = sticky.text;
-      selectedColor = sticky.color || '#fef08a';
+      selectedColor = /^#[0-9a-fA-F]{3,8}$/.test(sticky.color || '') ? sticky.color : '#fef08a';
       if (colorPreview) colorPreview.style.background = selectedColor;
       if (deleteBtn) deleteBtn.classList.remove('d-none');
       if (resolveBtn) resolveBtn.classList.remove('d-none');

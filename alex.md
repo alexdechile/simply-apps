@@ -1,5 +1,41 @@
 # Bitácora de Alex - Simply Apps
 
+## Último Realizado [2026-09-27]
+- **Corrección de salto del cursor y desplazamiento forzado hacia arriba en textos largos:**
+  - **Causa raíz:**
+    1. *Bucle de retroalimentación de scroll:* En [script.js](file:///home/alexdechile/proyectos/simply-apps/script.js), `cursorActivity` forzaba `activeOutput.scrollTop` calculando `coords.top / (scrollInfo.height - scrollInfo.clientHeight)` sin encender la bandera `isSyncingOutput`. Esto disparaba inmediatamente el evento `scroll` del panel de salida (ej. Facebook), el cual calculaba un scroll inverso y sobreescribía bruscamente `scroller.scrollTop` del editor mandándolo a la parte superior.
+    2. *Re-render destructivo en `actualizarVistas`:* Cada vez que se tecleaba o borraba un carácter para corregir, se ejecutaba `el.outFB.textContent = ...`, lo que reiniciaba el scroll del contenedor a 0 y disparaba de nuevo el scroll bidireccional hacia el editor a la posición 0.
+    3. *Conflicto Flexbox en CodeMirror:* En [style.css](file:///home/alexdechile/proyectos/simply-apps/style.css), la regla combinada `.EasyMDEContainer, .CodeMirror { display: flex !important; ... }` forzaba flexbox sobre `.CodeMirror`, rompiendo el flujo interno de posicionamiento absoluto de CodeMirror 5 (afectando el textarea oculto de entrada, el cursor y las barras de scroll).
+  - **Solución implementada:**
+    - En [script.js](file:///home/alexdechile/proyectos/simply-apps/script.js): Se eliminó la asignación errónea de scroll en `cursorActivity`, dejando que la sincronización ocurra limpiamente a través del evento `scroll` nativo del editor. Se aisló `actualizarVistas` preservando el scroll previo y protegiendo el render con la bandera de sincronización. Además, se blindó el listener de scroll de los paneles de salida para que si el editor tiene el foco (`cm.hasFocus()`), ningún cambio externo pueda alterar el scroll del editor.
+    - En [style.css](file:///home/alexdechile/proyectos/simply-apps/style.css): Se separó `.EasyMDEContainer` (flex container) de `.CodeMirror` (relative container con `min-height: 0`), garantizando que CodeMirror 5 conserve su geometría y gestión de scroll interna sin saltos.
+
+## Último Realizado [2026-09-21]
+- **Corrección de bloqueo/congelamiento al abrir el modal de Sesiones:**
+  - **Causa raíz:** En [style.css](file:///home/alexdechile/proyectos/simply-apps/style.css), `.modal-backdrop.show` tenía forzado `z-index: 4999 !important;`, mientras que solo `#researchModal` y `#recoverVaultModal` tenían `z-index: 5000 !important;`. El modal `#sessionModal` (y `#stickyModal`) heredaban el z-index por defecto de Bootstrap (1055), quedando atrapados detrás del telón oscuro, lo que bloqueaba todos los clics y congelaba la interfaz.
+  - **Solución CSS:** Se aplicó la regla global `.modal { z-index: 5000 !important; }` para que cualquier modal se posicione siempre por encima del backdrop (4999), garantizando interactividad fluida.
+  - **Mejoras complementarias en sesiones y proxy Nginx:**
+    - Se corrigió la URL del CDN de `qrcode` en [index.html](file:///home/alexdechile/proyectos/simply-apps/index.html) a la versión 1.4.4 funcional (la 1.5.4 arrojaba error 404 en jsDelivr).
+    - Se implementó la función helper `appUrl` en [script.js](file:///home/alexdechile/proyectos/simply-apps/script.js) y [diagram.js](file:///home/alexdechile/proyectos/simply-apps/diagram.js) para detectar dinámicamente si la app corre bajo el proxy Nginx (`/simply/`) o directamente en la raíz (`/`). De este modo, las llamadas a `api/session` y `api/stickies` van a `/simply/api/...` en vez de `/api/...` (que Nginx enrutaba a otro servicio devolviendo 404).
+    - Se habilitó la apertura de sesiones en caliente sin recargar toda la página web y se asegura que la URL del QR use el host y protocolo público real del navegador del usuario.
+
+## Último Realizado [2026-08-30]
+- **Retorno a DeepInfra y OpenRouter (Migración desde Cloudflare Workers):**
+  - **Motivo:** Los Workers de Cloudflare (Comerza proxy) bloqueaban y filtraban de manera agresiva marcas comerciales, nombres de pila y textos polémicos.
+  - **Solución backend:** Se eliminaron las redirecciones forzadas a modelos `@cf/*` y se migraron los endpoints `/ai-polish`, `/ai-decorate`, `/ai-suggest` y `/ask-ai` en `server.js` para que invoquen el binario local de `aichat` mediante `spawn`. Esto mantiene 100% de coherencia con el archivo de configuración global `~/.config/aichat/config.yaml` que gestiona las API Keys y los modelos del usuario de manera nativa.
+  - **Visualización de Costo Real:** Se removió la métrica "Neuronas (CF)" de la interfaz (`index.html` y `script.js`). Ahora la barra de herramientas inferior calcula y muestra el **Costo estimado en USD** basado en el uso real de Llama 3.3 70B de DeepInfra ($0.59 por millón de tokens).
+
+## Último Realizado [2026-08-29 - Tarde]
+- **Modal de Previsualización de Respuestas de la IA (Evitar Pérdida de Borradores):**
+  - **Problema:** Cuando la IA fallaba o devolvía mensajes de rechazo ("Lo siento, pero no puedo cumplir con esa solicitud."), la app no mostraba el contenido antes de inyectarlo en el editor. Al hacer clic en confirmar de forma ciega, el usuario sobrescribía y perdía su borrador original.
+  - **Solución:** Se implementó la función `showAIPreviewModal` en [script.js](file:///home/alexdechile/proyectos/simply-apps/script.js) que genera un modal overlay interactivo con estilo nativo y un área de texto en modo lectura.
+  - **Migración de Funciones:** Se reemplazaron todos los `confirm` nativos y ciegos de las funciones que inyectan o añaden texto del editor, garantizando que el usuario siempre pueda ver, evaluar o cancelar antes de realizar cualquier cambio destructivo o adición. Aplica a:
+    - `🧂 Decorar` y `✨ Pulir`
+    - `💡 Sugerir` y `🪝 Generar Ganchos (Hooks)`
+    - `🐦 Generar Hilo de X` y `Copywriting PAS / AIDA`
+    - `🧠 Pensar` (Reescritura de Facebook)
+    - Generadores de posts completos (Música, Tech, Noticias).
+
 ## Último Realizado [2026-08-27 - Noche]
 - **Integración Inicial de la API de IA Serverless (`chat.comerza.cl`):**
   - **Configuración de Variables:** Se añadieron `COMERZA_SECRET_TOKEN` y `AI_API_URL` al archivo `.env` del proyecto.
