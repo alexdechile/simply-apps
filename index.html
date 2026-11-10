@@ -68,7 +68,7 @@
         </div>
         
         <div class="btn-pill-group">
-          <button id="cancionBtn" class="action-btn ai-btn" title="Post completo de canción con IA">🎵 Post</button>
+          <button id="cancionBtn" class="action-btn ai-btn" title="Crónica musical con IA">🎵 Canción</button>
           <button id="techBtn"    class="action-btn ai-btn" title="Crónica tecnológica con IA">💻 Tech</button>
           <button id="newsBtn"    class="action-btn ai-btn" title="Análisis de noticias con IA">📰 News</button>
         </div>
@@ -437,6 +437,44 @@
         </div>
         <div class="modal-footer border-secondary py-2">
           <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Generación Guiada (Tech / News / Cancion) -->
+  <div class="modal fade" id="topicGenerateModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 540px;">
+      <div class="modal-content bg-dark text-white border-secondary shadow-lg">
+        <div class="modal-header border-secondary py-2">
+          <h6 class="modal-title" id="topicModalTitle">💻 Investigar y Redactar Crónica Tech</h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body py-3">
+          <div class="alert alert-dark border-secondary p-2 mb-3 small" id="topicModalDescription" style="background: rgba(255,255,255,0.04);">
+            <strong>¿Cómo funciona este proceso?</strong><br>
+            1. 🔍 <strong>Investigación automática:</strong> Busca fuentes y documentación técnica verificada usando Google Search.<br>
+            2. ✍️ <strong>Redacción con IA:</strong> Transforma los datos en una crónica amena, pedagógica y sin tecnicismos oscuros.
+          </div>
+
+          <div class="mb-3">
+            <label for="topicModalInput" class="form-label small fw-bold text-light" id="topicModalInputLabel">¿Qué tecnología o app deseas investigar?</label>
+            <input type="text" id="topicModalInput" class="form-control bg-black text-white border-secondary" placeholder="Ej: Raycast, Docker para principiantes, Modelos LLM gratis..." autocomplete="off">
+          </div>
+
+          <div class="mb-2">
+            <label for="topicModalModelSelect" class="form-label small fw-bold text-light">Modelo de IA para la redacción:</label>
+            <select id="topicModalModelSelect" class="form-select form-select-sm bg-black text-white border-secondary">
+              <!-- Se puebla dinámicamente con los modelos disponibles -->
+            </select>
+            <div class="form-text small text-secondary mt-1">
+              Selecciona tu modelo preferido: DeepInfra (estable y económico), Gemini (rápido) o las 🎁 <strong>capas gratuitas de OpenRouter</strong>.
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer border-secondary py-2">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" id="topicModalConfirmBtn" class="btn btn-sm btn-primary ai-btn">🚀 Comenzar Investigación</button>
         </div>
       </div>
     </div>

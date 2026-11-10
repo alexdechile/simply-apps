@@ -615,6 +615,38 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
     return localStorage.getItem('simply-ai-model') || 'deepinfra:meta-llama/Llama-3.3-70B-Instruct-Turbo';
   }
 
+  function formatModelDisplay(model) {
+    const client = (model.client || '').toLowerCase();
+    const name = model.name || '';
+    if (client === 'deepinfra') {
+      return {
+        icon: '⭐',
+        tier: 'DeepInfra',
+        text: `${name} (DeepInfra - Estable)`
+      };
+    }
+    if (client === 'gemini') {
+      return {
+        icon: '⚡',
+        tier: 'Gemini',
+        text: `${name} (Google Gemini - Rápido)`
+      };
+    }
+    if (client === 'openrouter') {
+      const isFree = name.toLowerCase().includes('free');
+      return {
+        icon: isFree ? '🎁' : '🌐',
+        tier: isFree ? 'OpenRouter Free' : 'OpenRouter',
+        text: `${name} (OpenRouter${isFree ? ' - Capa Gratuita' : ''})`
+      };
+    }
+    return {
+      icon: '🤖',
+      tier: client,
+      text: `${name} (${client})`
+    };
+  }
+
   async function initModelSelector() {
     const menu = document.getElementById('aiModelMenu');
     const label = document.getElementById('currentModelLabel');
@@ -626,9 +658,10 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
     label.textContent = savedClient.charAt(0).toUpperCase() + savedClient.slice(1);
 
     try {
-      const res = await fetch('ai-models');
+      const res = await fetch(appUrl('ai-models'));
       if (!res.ok) throw new Error('Error al cargar modelos');
       const { models } = await res.json();
+      window._cachedModels = Array.isArray(models) ? models : [];
 
       // Validar si el modelo guardado existe en los modelos activos
       let activeModel = savedModel;
@@ -664,7 +697,9 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
           a.className = 'dropdown-item' + (m.fullId === savedModel ? ' active' : '');
           a.href = '#';
           a.dataset.model = m.fullId;
-          a.textContent = m.name;
+          const display = formatModelDisplay(m);
+          a.textContent = `${display.icon} ${m.name}`;
+          a.title = display.text;
           a.onclick = (e) => {
             e.preventDefault();
             localStorage.setItem('simply-ai-model', m.fullId);
@@ -1135,174 +1170,449 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
       throw err;
     }
   }
-  async function consultarIA() {
-    const text = easyMDE.value();
-    if (!text.trim()) return;
+  /**
+ * MODOS DE PENSAMIENTO PARA EL BOTÓN "PENSAR"
+ * Implementa la arquitectura del Idea Generator 2.0 adaptada a un solo modelo IA
+ * usando diferentes "personas" por prompt en lugar de múltiples modelos.
+ * 
+ * Modos disponibles:
+ * - analyze: Análisis profundo (desglosa ideas, suposiciones, lagunas)
+ * - synth: Síntesis (combina ideas en visión unificada)
+ * - critique: Crítica (juega abogado del diablo, encuentra debilidades)
+ * - facebook: Reescribe para Facebook (modo original)
+ */
 
-    state.isThinking = true;
-    el.pensar.textContent = '🤔 Pensando FB...';
+// Definir los modos de pensamiento y sus prompts (reutiliza estructura existente)
+const thinkingModes = {
+  analyze: {
+    name: 'Analizar',
+    icon: '🔍',
+    prompt: `Analiza profundamente este texto. Identifica las ideas principales, sus suposiciones, lagunas en el razonamiento y posibles sesgos. Sé exhaustivo pero conciso. No agregues información nueva que no esté implícita.`,
+    key: 'analyze'
+  },
+  synth: {
+    name: 'Sintetizar', 
+    icon: '⚡',
+    prompt: `Sintetiza y combina las ideas clave de este texto en una visión unificada. Encuentra los hilos comunes y crea una perspectiva integradora. Resume el esencia sin perder matices importantes.`,
+    key: 'synth'
+  },
+  critique: {
+    name: 'Crítica',
+    icon: '📊', 
+    prompt: `Juega al abogado del diablo. Encuentra debilidades, contradicciones, y áreas que podrían mejorarse. Sé constructivo y específico. Identifica qué partes son más fuertes y cuáles podrían reforzarse. No seas redundante.`,
+    key: 'critique'
+  },
+  facebook: {
+    name: 'Facebook',
+    icon: '📱',
+    prompt: `Reescribe el siguiente borrador para Facebook aplicando personalidad y reglas de estilo. Preserva el mensaje principal, los argumentos clave y la intención del original. No agregues información nueva.`,
+    key: 'facebook'
+  }
+};
 
-    try {
-      // Obtener prompt según tono
-      const tonePromptEl = el.prompts[state.currentTone];
-      const systemPrompt = tonePromptEl ? tonePromptEl.value : defaultPrompts[state.currentTone];
+// Estado actual del modo de pensamiento
+let currentThinkingMode = 'facebook'; // Modo por defecto
 
-      const userInstruction = `Reescribe el siguiente borrador para Facebook aplicando tu personalidad y reglas de estilo. Preserva el mensaje principal, los argumentos clave y la intención del original. No agregues información nueva.
+// Interfaz de selección de modos (creada dinámicamente)
+function createThinkingModesUI() {
+  const modesContainer = document.getElementById('pensarModes');
+  if (modesContainer) return; // Ya existe
+  
+  const container = document.createElement('div');
+  container.id = 'pensarModes';
+  container.style.cssText = `
+    display: none;
+    margin: 8px 0;
+    gap: 4px;
+  `;
+  
+  Object.entries(thinkingModes).forEach(([key, mode]) => {
+    const btn = document.createElement('button');
+    btn.className = 'mode-btn';
+    btn.dataset.mode = key;
+    btn.style.cssText = `
+      background: none;
+      border: 1px solid #ddd;
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+      border-radius: 4px;
+      color: #555;
+    `;
+    btn.textContent = `${mode.icon} ${mode.name}`;
+    btn.addEventListener('click', () => selectThinkingMode(key));
+    container.appendChild(btn);
+  });
+  
+  // Insertar después del botón pensar
+  const pensarBtn = document.getElementById('pensarBtn');
+  pensarBtn.parentNode.insertBefore(container, pensarBtn.nextSibling);
+}
+
+function selectThinkingMode(modeKey) {
+  // Actualizar UI visual
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === modeKey);
+  });
+  
+  currentThinkingMode = modeKey;
+  
+  // Ejecutar pensamiento con ese modo
+  pensarConModo(modeKey);
+}
+
+async function pensarConModo(modeKey) {
+  const mode = thinkingModes[modeKey];
+  if (!mode) return;
+  
+  const text = easyMDE.value();
+  if (!text.trim()) return;
+
+  state.isThinking = true;
+  el.pensar.textContent = `${mode.icon} Pensando ${mode.name}...`;
+
+  try {
+    // Usar el systemPrompt actual (de tonos) combinado con el prompt del modo
+    const tonePromptEl = el.prompts[state.currentTone];
+    const systemPrompt = tonePromptEl ? tonePromptEl.value : defaultPrompts[state.currentTone];
+    
+    const userInstruction = `${mode.prompt}
 
 BORRADOR:
 ${text}`;
 
-      let fbPost = await callAI(systemPrompt, userInstruction);
-      fbPost = fbPost.replace(/^```markdown\n?/g, '').replace(/```$/g, '').trim();
+    const result = await callAI(systemPrompt, userInstruction);
+    
+    // Limpiar resultado (similar a como se hace para Facebook)
+    const cleanedResult = result.replace(/^```markdown\n?/g, '').replace(/```$/g, '').trim();
+    
+    // Mostrar en modal en lugar de reemplazar el texto original
+    showThinkingResult(mode, cleanedResult);
+    
+  } catch (e) {
+    console.error(e);
+    alert('Error en la IA: ' + e.message);
+  }
+  finally {
+    state.isThinking = false;
+    el.pensar.textContent = '🧠 Pensar';
+  }
+}
 
-      const accept = await showAIPreviewModal('🧠 Post de Facebook Generado', fbPost, 'Inyectar en el editor');
-      if (accept) {
-        const cm = easyMDE.codemirror;
-        const scrollInfo = cm.getScrollInfo();
-        cm.getDoc().setValue(fbPost);
-        cm.refresh();
-        cm.scrollTo(scrollInfo.left, 0);
-        el.outFB.textContent = markdownToFacebookUnicode(fbPost);
-        if (el.charCount) el.charCount.textContent = fbPost.length;
-      }
-    } catch (e) {
-      console.error(e);
-      alert('Error en la IA: ' + e.message);
-    }
-    finally {
-      state.isThinking = false;
-      el.pensar.textContent = '🧠 Pensar';
+function showThinkingResult(mode, result) {
+  // Crear o reutilizar modal de resultados
+  let modal = document.getElementById('thinkingResultModal');
+  
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'thinkingResultModal';
+    modal.style.cssText = `
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 20px;
+      z-index: 1000;
+      font-family: sans-serif;
+    `;
+    
+    modal.innerHTML = `
+      <div style="background: #2d3748; padding: 15px; border-radius: 8px; margin: -20px -20px 15px; text-align: center;">
+        <h3 style="margin: 0; color: #68d391;">${mode.icon} ${mode.name}</h3>
+        <button id="closeResultModal" style="float: right; background: none; border: none; color: #888; font-size: 20px; cursor: pointer;">×</button>
+      </div>
+      <div style="max-height: 400px; overflow: auto; background: #1a202c; padding: 15px; border-radius: 8; margin-top: 15px; font-size: 14px;">
+        <pre style="white-space: pre-wrap; color: #cbd5e0;">${result}</pre>
+      </div>
+      <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #4a5568; display: flex; gap: 10px; justify-content: flex-end;">
+        <button id="applyResult" style="background: #3182ce; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px;">Aplicar al editor</button>
+        <button id="copyResult" style="background: #48bb78; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px;">Copiar</button>
+        <button id="closeResult" style="background: #e53e3e; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px;">Cerrar</button>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Eventos
+    modal.querySelector('#closeResultModal').addEventListener('click', () => document.body.removeChild(modal));
+    modal.querySelector('#closeResult').addEventListener('click', () => document.body.removeChild(modal));
+    
+    modal.querySelector('#applyResult').addEventListener('click', () => {
+      const cm = easyMDE.codemirror;
+      const scrollInfo = cm.getScrollInfo();
+      cm.getDoc().setValue(result);
+      cm.refresh();
+      cm.scrollTo(scrollInfo.left, 0);
+      document.body.removeChild(modal);
+    });
+    
+    modal.querySelector('#copyResult').addEventListener('click', () => {
+      navigator.clipboard.writeText(result).then(() => {
+        alert('Copiado al portapapeles');
+      });
+      document.body.removeChild(modal);
+    });
+  }
+  
+  // Mostrar modal (ya existe o acaba de crearse)
+  modal.style.display = 'block';
+  
+  // Cerrar al hacer clic fuera
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) document.body.removeChild(modal);
+  });
+}
+
+// Modificar el evento onclick original del botón pensar
+createThinkingModesUI();
+
+el.pensar.onclick = async function() {
+  // Alternar entre mostrar modos o ejecutar modo actual
+  const modesContainer = document.getElementById('pensarModes');
+  
+  if (modesContainer.style.display === 'none' || modesContainer.style.display === '') {
+    // Mostrar selector de modos
+    modesContainer.style.display = 'block';
+    el.pensar.textContent = '🧠 Seleccionar modo';
+  } else {
+    // Ocultar selector y ejecutar modo actual
+    modesContainer.style.display = 'none';
+    el.pensar.textContent = currentThinkingMode !== 'facebook' 
+      ? `${thinkingModes[currentThinkingMode].icon} ${thinkingModes[currentThinkingMode].name}`
+      : '🧠 Pensar';
+    
+    // Si no es el modo Facebook por defecto, ejecutarlo
+    if (currentThinkingMode !== 'facebook') {
+      await pensarConModo(currentThinkingMode);
     }
   }
-  el.pensar.onclick = consultarIA;
+};
 
+
+  // --- MODAL DE GENERACIÓN GUIADA (Tech / Noticias / Música) ---
+  function openTopicGenerateModal({
+    title,
+    descriptionHtml,
+    inputLabel,
+    placeholder,
+    initialQuery = '',
+    onConfirm
+  }) {
+    const modalEl = document.getElementById('topicGenerateModal');
+    if (!modalEl) return;
+    const titleEl = document.getElementById('topicModalTitle');
+    const descEl = document.getElementById('topicModalDescription');
+    const inputLabelEl = document.getElementById('topicModalInputLabel');
+    const inputEl = document.getElementById('topicModalInput');
+    const selectEl = document.getElementById('topicModalModelSelect');
+    const confirmBtn = document.getElementById('topicModalConfirmBtn');
+
+    if (titleEl) titleEl.textContent = title;
+    if (descEl) descEl.innerHTML = descriptionHtml;
+    if (inputLabelEl) inputLabelEl.textContent = inputLabel;
+    if (inputEl) {
+      inputEl.value = initialQuery;
+      inputEl.placeholder = placeholder || '';
+    }
+
+    const currentModel = getSelectedModel();
+    if (selectEl) {
+      selectEl.innerHTML = '';
+      const cached = window._cachedModels || [];
+      cached.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.fullId;
+        const display = formatModelDisplay(m);
+        opt.textContent = `${display.icon} ${display.text}`;
+        if (m.fullId === currentModel) opt.selected = true;
+        selectEl.appendChild(opt);
+      });
+      if (selectEl.options.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = currentModel;
+        opt.textContent = currentModel;
+        selectEl.appendChild(opt);
+      }
+    }
+
+    const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    bsModal.show();
+    setTimeout(() => inputEl && inputEl.focus(), 250);
+
+    const handleConfirm = async () => {
+      const query = (inputEl ? inputEl.value : '').trim();
+      if (!query) {
+        if (inputEl) inputEl.focus();
+        return;
+      }
+      const chosenModel = selectEl ? selectEl.value : currentModel;
+      bsModal.hide();
+      if (typeof onConfirm === 'function') {
+        await onConfirm(query, chosenModel);
+      }
+    };
+
+    if (confirmBtn) {
+      confirmBtn.onclick = handleConfirm;
+    }
+
+    if (inputEl) {
+      inputEl.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleConfirm();
+        }
+      };
+    }
+  }
 
   // --- POST MUSICAL COMPLETO CON IA ---
   el.cancionBtn = document.getElementById('cancionBtn');
   if (el.cancionBtn) {
-    el.cancionBtn.onclick = async () => {
-      const query = prompt('¿Qué canción? (ej: "Queen - Bohemian Rhapsody" o "artista - tema")');
-      if (!query) return;
+    el.cancionBtn.onclick = () => {
+      openTopicGenerateModal({
+        title: '🎵 Crear Post Musical con Alma de Cronista',
+        descriptionHtml: '<strong>¿Cómo funciona este proceso?</strong><br>' +
+          '1. 🔍 <strong>Extracción musical:</strong> Consulta Wikipedia, Internet Archive y entrevistas al artista.<br>' +
+          '2. ✍️ <strong>Crónica con IA:</strong> Narra la chispa y el momento de creación sin alucinar compositores.',
+        inputLabel: '¿Qué canción quieres transformar en crónica musical?',
+        placeholder: 'Ej: Queen - Bohemian Rhapsody, Charly García - Rezo por vos, Silvio Rodríguez - Ojalá...',
+        onConfirm: async (query, model) => {
+          const originalText = el.cancionBtn.textContent;
+          el.cancionBtn.textContent = '🎵 Recopilando datos...';
+          el.cancionBtn.disabled = true;
 
-      const originalText = el.cancionBtn.textContent;
-      el.cancionBtn.textContent = '🎵 Recopilando datos...';
-      el.cancionBtn.disabled = true;
+          try {
+            const response = await fetch(appUrl('cancion/completo'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query, model })
+            });
 
-      try {
-        const response = await fetch('cancion/completo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query })
-        });
+            if (!response.ok) {
+              const errText = await response.text();
+              throw new Error(errText || 'Error al generar post musical');
+            }
 
-        if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(errText || 'Error al generar post musical');
+            const data = await response.json();
+
+            const accept = await showAIPreviewModal('🎵 Post Musical Generado', data.content, 'Inyectar en el editor');
+            if (accept) {
+              const cm = easyMDE.codemirror;
+              cm.getDoc().setValue(data.content);
+              cm.refresh();
+              cm.scrollTo(0, 0);
+              actualizarVistas();
+            }
+          } catch (e) {
+            console.error(e);
+            alert('Error: ' + e.message);
+          } finally {
+            el.cancionBtn.textContent = originalText;
+            el.cancionBtn.disabled = false;
+          }
         }
-
-        const data = await response.json();
-
-        const accept = await showAIPreviewModal('🎵 Post Musical Generado', data.content, 'Inyectar en el editor');
-        if (accept) {
-          const cm = easyMDE.codemirror;
-          cm.getDoc().setValue(data.content);
-          cm.refresh();
-          cm.scrollTo(0, 0);
-          actualizarVistas();
-        }
-      } catch (e) {
-        console.error(e);
-        alert('Error: ' + e.message);
-      } finally {
-        el.cancionBtn.textContent = originalText;
-        el.cancionBtn.disabled = false;
-      }
+      });
     };
   }
 
   // --- POST TECNOLÓGICO CON IA ---
   el.techBtn = document.getElementById('techBtn');
   if (el.techBtn) {
-    el.techBtn.onclick = async () => {
-      const query = prompt('¿Sobre qué tecnología o app quieres escribir? (ej: "Docker", "IA en la medicina", "Raycast")');
-      if (!query) return;
+    el.techBtn.onclick = () => {
+      openTopicGenerateModal({
+        title: '💻 Investigar y Redactar Crónica Tecnológica',
+        descriptionHtml: '<strong>¿Cómo funciona este proceso?</strong><br>' +
+          '1. 🔍 <strong>Búsqueda en Google:</strong> Extrae fuentes y documentación técnica verificada.<br>' +
+          '2. ✍️ <strong>Redacción con IA:</strong> Sintetiza una crónica ágil con analogías claras para migrantes digitales.',
+        inputLabel: '¿Sobre qué tecnología, app o concepto quieres escribir?',
+        placeholder: 'Ej: Docker, Modelos de lenguaje gratis, Raycast, SQLite...',
+        onConfirm: async (query, model) => {
+          const originalText = el.techBtn.textContent;
+          el.techBtn.textContent = '💻 Analizando tech...';
+          el.techBtn.disabled = true;
 
-      const originalText = el.techBtn.textContent;
-      el.techBtn.textContent = '💻 Analizando tech...';
-      el.techBtn.disabled = true;
+          try {
+            const response = await fetch(appUrl('tech/completo'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query, model })
+            });
 
-      try {
-        const response = await fetch('tech/completo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query })
-        });
+            if (!response.ok) {
+              const errText = await response.text();
+              throw new Error(errText || 'Error al generar crónica tech');
+            }
 
-        if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(errText || 'Error al generar crónica tech');
+            const data = await response.json();
+
+            const accept = await showAIPreviewModal('💻 Crónica Tecnológica Generada', data.content, 'Inyectar en el editor');
+            if (accept) {
+              const cm = easyMDE.codemirror;
+              cm.getDoc().setValue(data.content);
+              cm.refresh();
+              cm.scrollTo(0, 0);
+              actualizarVistas();
+            }
+          } catch (e) {
+            console.error(e);
+            alert('Error: ' + e.message);
+          } finally {
+            el.techBtn.textContent = originalText;
+            el.techBtn.disabled = false;
+          }
         }
-
-        const data = await response.json();
-
-        const accept = await showAIPreviewModal('💻 Crónica Tecnológica Generada', data.content, 'Inyectar en el editor');
-        if (accept) {
-          const cm = easyMDE.codemirror;
-          cm.getDoc().setValue(data.content);
-          cm.refresh();
-          cm.scrollTo(0, 0);
-          actualizarVistas();
-        }
-      } catch (e) {
-        console.error(e);
-        alert('Error: ' + e.message);
-      } finally {
-        el.techBtn.textContent = originalText;
-        el.techBtn.disabled = false;
-      }
+      });
     };
   }
 
   // --- POST DE NOTICIAS CON IA ---
   el.newsBtn = document.getElementById('newsBtn');
   if (el.newsBtn) {
-    el.newsBtn.onclick = async () => {
-      const query = prompt('¿Qué noticia o tema de actualidad quieres analizar profundamente?');
-      if (!query) return;
+    el.newsBtn.onclick = () => {
+      openTopicGenerateModal({
+        title: '📰 Analizar Noticia o Geopolítica',
+        descriptionHtml: '<strong>¿Cómo funciona este proceso?</strong><br>' +
+          '1. 🔍 <strong>Búsqueda de contexto:</strong> Rastrea cables de noticias y análisis de medios oficiales vía Google Search.<br>' +
+          '2. ✍️ <strong>Análisis profundo con IA:</strong> Explica qué hay detrás del anuncio oficial y los intereses en juego.',
+        inputLabel: '¿Qué noticia o tema de actualidad quieres analizar profundamente?',
+        placeholder: 'Ej: Elecciones, regulación de IA en Europa, mercado del litio...',
+        onConfirm: async (query, model) => {
+          const originalText = el.newsBtn.textContent;
+          el.newsBtn.textContent = '📰 Analizando trasfondo...';
+          el.newsBtn.disabled = true;
 
-      const originalText = el.newsBtn.textContent;
-      el.newsBtn.textContent = '📰 Analizando trasfondo...';
-      el.newsBtn.disabled = true;
+          try {
+            const response = await fetch(appUrl('news/completo'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query, model })
+            });
 
-      try {
-        const response = await fetch('news/completo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query })
-        });
+            if (!response.ok) {
+              const errText = await response.text();
+              throw new Error(errText || 'Error al generar análisis de noticias');
+            }
 
-        if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(errText || 'Error al generar análisis de noticias');
+            const data = await response.json();
+
+            const accept = await showAIPreviewModal('📰 Análisis de Noticias Generado', data.content, 'Inyectar en el editor');
+            if (accept) {
+              const cm = easyMDE.codemirror;
+              cm.getDoc().setValue(data.content);
+              cm.refresh();
+              cm.scrollTo(0, 0);
+              actualizarVistas();
+            }
+          } catch (e) {
+            console.error(e);
+            alert('Error: ' + e.message);
+          } finally {
+            el.newsBtn.textContent = originalText;
+            el.newsBtn.disabled = false;
+          }
         }
-
-        const data = await response.json();
-
-        const accept = await showAIPreviewModal('📰 Análisis de Noticias Generado', data.content, 'Inyectar en el editor');
-        if (accept) {
-          const cm = easyMDE.codemirror;
-          cm.getDoc().setValue(data.content);
-          cm.refresh();
-          cm.scrollTo(0, 0);
-          actualizarVistas();
-        }
-      } catch (e) {
-        console.error(e);
-        alert('Error: ' + e.message);
-      } finally {
-        el.newsBtn.textContent = originalText;
-        el.newsBtn.disabled = false;
-      }
+      });
     };
   }
 

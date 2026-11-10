@@ -14,8 +14,8 @@ if (!isLoopback) {
 const server = app.listen(port, host, () => {
     console.log(`Simply Apps running at http://${host}:${port}`);
 });
-server.timeout = 120000; // 120 segundos
-server.keepAliveTimeout = 125000;
+server.timeout = 300000; // 300 segundos (5 minutos, alineado con Nginx)
+server.keepAliveTimeout = 305000;
 
 // Cabeceras de seguridad básicas
 app.disable('x-powered-by');
@@ -88,15 +88,15 @@ function cleanAIOutput(raw) {
     return out.trim();
 }
 
-// Ejecutor unificado de aichat con control de timeout, reintentos y fallback
-function runAichat(systemPrompt, userContent, model, options = {}) {
-    const { maxAttempts = 3, delayMs = 1200, timeoutMs = 45000 } = options;
+// Ejecutor unificado de aichat con control de timeout, reintentos y fallback resiliente
+async function runAichat(systemPrompt, userContent, model, options = {}) {
+    const { maxAttempts = 2, delayMs = 1200, timeoutMs = 90000, isFallback = false } = options;
     const targetModel = resolveModel(model);
     const aichatBin = '/home/alexdechile/.cargo/bin/aichat';
 
-    function attempt(n) {
+    function execute(selectedModel, n) {
         return new Promise((resolve, reject) => {
-            const child = spawn(aichatBin, ['-S', '--model', targetModel, '--prompt', systemPrompt], {
+            const child = spawn(aichatBin, ['-S', '--model', selectedModel, '--prompt', systemPrompt], {
                 env: { ...process.env, HOME: '/home/alexdechile' }
             });
             let stdout = '';
@@ -109,9 +109,9 @@ function runAichat(systemPrompt, userContent, model, options = {}) {
                 try { child.kill('SIGKILL'); } catch (e) {}
                 if (n < maxAttempts) {
                     console.warn(`[AI] aichat timeout (${timeoutMs}ms) en intento ${n}/${maxAttempts}, reintentando...`);
-                    setTimeout(() => attempt(n + 1).then(resolve, reject), delayMs);
+                    setTimeout(() => execute(selectedModel, n + 1).then(resolve, reject), delayMs);
                 } else {
-                    reject(new Error(`Timeout de IA (${timeoutMs}ms) en modelo ${targetModel}`));
+                    reject(new Error(`Timeout de IA (${timeoutMs}ms) en modelo ${selectedModel}`));
                 }
             }, timeoutMs);
 
@@ -133,12 +133,14 @@ function runAichat(systemPrompt, userContent, model, options = {}) {
                     resolve(stdout);
                     return;
                 }
-                if (n >= maxAttempts) {
-                    reject(new Error(stderr.trim() || `aichat exit code ${code}`));
+                const errDetail = stderr.trim() || `aichat exit code ${code}`;
+                const isDeadModel = /no longer available|not found|no provider serves this model|status: 404/i.test(errDetail);
+                if (isDeadModel || n >= maxAttempts) {
+                    reject(new Error(errDetail));
                     return;
                 }
                 console.warn(`[AI] aichat intento ${n}/${maxAttempts} falló (${code}), reintentando...`);
-                setTimeout(() => attempt(n + 1).then(resolve, reject), delayMs);
+                setTimeout(() => execute(selectedModel, n + 1).then(resolve, reject), delayMs);
             });
 
             child.stdin.write(userContent || '');
@@ -146,7 +148,15 @@ function runAichat(systemPrompt, userContent, model, options = {}) {
         });
     }
 
-    return attempt(1);
+    try {
+        return await execute(targetModel, 1);
+    } catch (err) {
+        if (targetModel !== DEFAULT_AI_MODEL && !isFallback) {
+            console.warn(`[AI Fallback] El modelo '${targetModel}' falló (${err.message}). Reintentando automáticamente con modelo seguro: ${DEFAULT_AI_MODEL}`);
+            return await execute(DEFAULT_AI_MODEL, 1);
+        }
+        throw err;
+    }
 }
 
 console.log(`[Config] Simply Apps IA: Proveedor preferente DeepInfra / OpenRouter / Gemini (${DEFAULT_AI_MODEL})`);
@@ -482,16 +492,16 @@ app.post('/research', (req, res) => {
 });
 
 app.post('/cancion/completo', async (req, res) => {
-    const { query } = req.body || {};
+    const { query, model } = req.body || {};
     if (typeof query !== 'string' || !query.trim()) return res.status(400).send('No query provided');
 
     const pythonBin = path.join(__dirname, 'venv', 'bin', 'python3');
     const scriptPath = path.join(__dirname, 'buscadores', 'cancion.py');
 
-    console.log(`[Cancion] Buscando datos para: ${query}`);
+    console.log(`[Cancion] Buscando datos para: ${query} (Modelo: ${model || 'default'})`);
 
     const safeQuery = String(query).trim();
-    execFile(pythonBin, [scriptPath, safeQuery], { maxBuffer: 1024 * 1024 * 5 }, async (error, stdout, stderr) => {
+    execFile(pythonBin, [scriptPath, safeQuery], { maxBuffer: 1024 * 1024 * 5, env: { ...process.env } }, async (error, stdout, stderr) => {
         if (error) {
             console.error(`[Cancion] Error: ${error}`);
             return res.status(500).send('Error al buscar datos de la canción');
@@ -509,50 +519,48 @@ app.post('/cancion/completo', async (req, res) => {
             return res.status(500).send(rawData.error);
         }
 
-        const systemPrompt = `Eres donalex:1717, un melómano con criterio y alma de cronista que escribe posts musicales vibrantes en redes sociales (Facebook/LinkedIn). Tu estilo no es solo informar, es CONTAR LA HISTORIA detrás de la música. Te inspiras en las grandes anécdotas de la industria: el miedo de un joven compositor, la llamada inesperada a medianoche, la presión de crear un clásico.
+        const systemPrompt = `Eres donalex:1717, un melómano con criterio y alma de cronista que escribe posts musicales vibrantes en redes sociales (Facebook/LinkedIn). Tu estilo no es solo informar, es CONTAR LA HISTORIA detrás de la música con rigor histórico absoluto.
 
-Tu voz es culta, apasionada, ligeramente nostálgica pero con la energía de quien descubre un secreto hoy mismo. El texto debe tener VITALIDAD — usa markdown (**negritas**, *cursivas*) y emojis donde aporten. Generas posts basados ÚNICAMENTE en los datos proporcionados.
+Tu voz es culta, apasionada, ligeramente nostálgica pero con la energía de quien descubre un secreto. El texto debe tener VITALIDAD — usa markdown (**negritas**, *cursivas*) y emojis donde aporten.
 
 ESTRUCTURA DEL POST (Narrativa y fluida):
 - **TÍTULO**: Nombre de la canción y artista.
-- **LA CHISPA / EL ALMA**: Aquí es donde sucede la magia. Si hay entrevistas, narra el "momento de creación". ¿Había presión? ¿Fue una llamada a las 1 a.m.? ¿Quién desafió a quién? Usa citas textuales entre comillas ("...") para darle voz al artista. Transforma los datos en una pequeña crónica.
-- **EL ORIGEN Y EL AUTOR**: Sé extremadamente cuidadoso aquí. **NO inventes autores.** Si los datos mencionan varios nombres, distingue entre compositores originales y adaptadores (especialmente en el pop español de los 90). Si el tema es de un artista español y hay nombres extranjeros, menciona también al autor de la letra en español (como Carlos Toro, etc.) si aparece. **Si no estás seguro del autor, OMITE la sección.**
-- **EL SONIDO (ESTUDIO Y PRODUCCIÓN)**: Detalles de las sesiones, músicos que dejaron su huella, el estudio o el álbum que lo cambió todo.
-- **ECOS Y VERSIONES**: Si es cover o tiene versiones icónicas, menciónalo como parte del legado. "Original de [artista], inmortalizada por [intérprete]".
-- **SENTIDO**: Si no es en español, explica la historia que cuenta la letra o su significado profundo.
-- **EL DATO INESPERADO**: Esa curiosidad que hace que el lector se detenga.
-- **MINUTA DE FUENTES**: Una lista breve y elegante de dónde se extrajo la información.
+- **LA CHISPA / EL ALMA**: Narra el origen o inspiración de la obra basándote EXCLUSIVAMENTE en las fuentes provistas. Si hay entrevistas reales en los datos, cita fragmentos verificados. Si NO hay entrevistas, describe el contexto general sin inventar diálogos ni escenas ficticias.
+- **EL ORIGEN Y EL AUTOR**: Sé extremadamente riguroso. **PROHIBIDO inventar autores o compositores.** Si los datos mencionan varios nombres, distingue entre compositores originales y adaptadores de letras en español si aparecen en el texto. Si no estás seguro del autor o no figura en los datos, OMITE la sección.
+- **EL SONIDO (ESTUDIO Y PRODUCCIÓN)**: Detalles técnicos, músicos, estudio o álbum que figuren en las fuentes.
+- **ECOS Y VERSIONES**: Covers o versiones icónicas mencionadas en las fuentes.
+- **SENTIDO**: Si el tema no es en español, explica el significado de la letra según la información recopilada.
+- **EL DATO INESPERADO**: Curiosidad real comprobada en los datos provistos.
+- **MINUTA DE FUENTES**: Lista de enlaces o fuentes de donde se extrajo la información.
 - 🎵 **Escúchala en YouTube Music**: [URL]
 
-REGLAS DE ORO:
-- **PROHIBIDO ALUCINAR**: No inventes datos biográficos ni autorías. Si los datos son contradictorios o insuficientes, prioriza la omisión.
-- **CONTEXTO CULTURAL**: Si el artista es hispano, busca y resalta el aporte de los autores hispanos involucrados.
-- NO hagas listas de puntos; prefiere párrafos cortos y fluidos.
-- Prioriza las entrevistas: son el corazón del relato.
-- Si un dato no está, OMITE la sección. No digas "no disponible".
-- Mantén un tono de "pequeña crónica musical" íntima y profesional.
-- NO menciones que eres una IA ni uses etiquetas <think>.`;
+REGLAS DE ORO ANTI-ALUCINACIÓN (OBLIGATORIAS):
+1. **ANCLAJE FACTUAL ESTRICTO**: Usa ÚNICAMENTE datos presentes en el contexto. No inventes anécdotas, llamadas a medianoche, discusiones ficticias ni fechas no documentadas.
+2. **PROHIBIDO INVENTAR CITAS**: Solo puedes usar comillas ("...") si provienen textualmente de las entrevistas o artículos suministrados en el contexto.
+3. **OMISIÓN ANTES QUE INVENCIÓN**: Si un dato no figura en las fuentes (productor, fecha exacta, estudio), simplemente OMITE ese punto. No digas "no disponible".
+4. Mantén un tono de pequeña crónica musical íntima, respetuosa y profesional.
+5. NO menciones que eres una IA ni uses etiquetas <think>.`;
 
         const wikipediaSection = rawData.wikipedia && rawData.wikipedia.extract
             ? `\n--- DATOS DE WIKIPEDIA ---\n${rawData.wikipedia.extract}\nURL: ${rawData.wikipedia.url || ''}`
-            : '';
+            : '\n--- DATOS DE WIKIPEDIA ---\n[Sin extracto disponible en Wikipedia]';
 
         const archiveSection = rawData.internet_archive && rawData.internet_archive.length > 0
             ? `\n--- DATOS DE INTERNET ARCHIVE ---\n${JSON.stringify(rawData.internet_archive, null, 2)}`
             : '';
 
         const entrevistasSection = rawData.entrevistas && rawData.entrevistas.length > 0
-            ? `\n--- ENTREVISTAS / FUENTES CON EL ARTISTA HABLANDO DE LA CANCIÓN ---\n${rawData.entrevistas.map(e => `Fuente: ${e.title}\nURL: ${e.url}\n${e.snippet}`).join('\n\n')}`
-            : '';
+            ? `\n--- ENTREVISTAS Y FUENTES REALES ---\n${rawData.entrevistas.map(e => `Fuente: ${e.title}\nURL: ${e.url}\n${e.snippet}`).join('\n\n')}`
+            : '\n--- AVISO CRÍTICO DE INVESTIGACIÓN ---\n[NO HAY ENTREVISTAS NI DECLARACIONES EN LAS FUENTES: Prohibido terminantemente inventar citas entre comillas ("...") o dramatizaciones ficticias]';
 
-        const userContent = `Canción: ${rawData.query}
+        const userContent = `Canción solicitada: ${rawData.query}
 ${wikipediaSection}
 ${archiveSection}
 ${entrevistasSection}
-YouTube Music: ${rawData.youtube_music || ''}`;
+YouTube Music: ${rawData.youtube_music || 'No disponible'}`;
 
         try {
-            const stdout = await runAichat(systemPrompt, userContent, DEFAULT_AI_MODEL);
+            const stdout = await runAichat(systemPrompt, userContent, model, { timeoutMs: 120000, maxAttempts: 2 });
             const post = cleanAIOutput(stdout);
             const cleanPost = post
                 .replace(/^<\|start_header_id\|>assistant<\|end_header_id\|>\n?/g, '')
@@ -565,22 +573,22 @@ YouTube Music: ${rawData.youtube_music || ''}`;
             res.send({ content: cleanPost });
         } catch (aiErr) {
             console.error('[Cancion] AI Error:', aiErr.message);
-            res.status(500).send('Error al generar el post con IA');
+            res.status(500).send('Error al generar el post con IA: ' + aiErr.message);
         }
     });
 });
 
 app.post('/tech/completo', async (req, res) => {
-    const { query } = req.body || {};
+    const { query, model } = req.body || {};
     if (typeof query !== 'string' || !query.trim()) return res.status(400).send('No query provided');
 
     const pythonBin = path.join(__dirname, 'venv', 'bin', 'python3');
     const scriptPath = path.join(__dirname, 'researcher.py');
 
-    console.log(`[Tech] Investigando: ${query}`);
+    console.log(`[Tech] Investigando: ${query} (Modelo: ${model || 'default'})`);
 
     const safeQuery = String(query).trim();
-    execFile(pythonBin, [scriptPath, safeQuery, '--depth', '1'], { maxBuffer: 1024 * 1024 * 5 }, async (error, stdout, stderr) => {
+    execFile(pythonBin, [scriptPath, safeQuery, 'sencilla', 'tecnologia'], { maxBuffer: 1024 * 1024 * 5, env: { ...process.env } }, async (error, stdout, stderr) => {
         if (error) {
             console.error(`[Tech] Error: ${error}`);
             return res.status(500).send('Error al investigar tecnología');
@@ -621,27 +629,27 @@ Datos encontrados:
 ${JSON.stringify(researchData, null, 2)}`;
 
         try {
-            const stdout = await runAichat(systemPrompt, userContent, DEFAULT_AI_MODEL);
+            const stdout = await runAichat(systemPrompt, userContent, model, { timeoutMs: 120000, maxAttempts: 2 });
             const content = cleanAIOutput(stdout);
             res.send({ content });
         } catch (aiErr) {
             console.error('[Tech] AI Error:', aiErr.message);
-            res.status(500).send('Error al generar crónica tech');
+            res.status(500).send('Error al generar crónica tech: ' + aiErr.message);
         }
     });
 });
 
 app.post('/news/completo', async (req, res) => {
-    const { query } = req.body || {};
+    const { query, model } = req.body || {};
     if (typeof query !== 'string' || !query.trim()) return res.status(400).send('No query provided');
 
     const pythonBin = path.join(__dirname, 'venv', 'bin', 'python3');
     const scriptPath = path.join(__dirname, 'researcher.py');
 
-    console.log(`[News] Investigando trasfondo: ${query}`);
+    console.log(`[News] Investigando trasfondo: ${query} (Modelo: ${model || 'default'})`);
 
     const safeQuery = String(query).trim();
-    execFile(pythonBin, [scriptPath, safeQuery, '--depth', '1'], { maxBuffer: 1024 * 1024 * 5 }, async (error, stdout, stderr) => {
+    execFile(pythonBin, [scriptPath, safeQuery, 'sencilla', 'noticias'], { maxBuffer: 1024 * 1024 * 5, env: { ...process.env } }, async (error, stdout, stderr) => {
         if (error) {
             console.error(`[News] Error: ${error}`);
             return res.status(500).send('Error al investigar noticia');
@@ -679,12 +687,12 @@ Datos encontrados:
 ${researchData}`;
 
         try {
-            const stdout = await runAichat(systemPrompt, userContent, DEFAULT_AI_MODEL);
+            const stdout = await runAichat(systemPrompt, userContent, model, { timeoutMs: 120000, maxAttempts: 2 });
             const content = cleanAIOutput(stdout);
             res.send({ content });
         } catch (aiErr) {
             console.error('[News] AI Error:', aiErr.message);
-            res.status(500).send('Error al generar análisis de noticias');
+            res.status(500).send('Error al generar análisis de noticias: ' + aiErr.message);
         }
     });
 });

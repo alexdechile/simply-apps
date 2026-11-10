@@ -900,6 +900,7 @@ body.theme-sketch .find-match { background: rgba(255, 200, 0, 0.45); }
 
 #researchModal .modal-content,
 #sessionModal .modal-content,
+#topicGenerateModal .modal-content,
 #recoverVaultModal .modal-content,
 #stickyModal .modal-content {
   background: rgba(12, 12, 22, 0.97) !important;
@@ -911,6 +912,7 @@ body.theme-sketch .find-match { background: rgba(255, 200, 0, 0.45); }
 
 #researchModal.show .modal-dialog,
 #sessionModal.show .modal-dialog,
+#topicGenerateModal.show .modal-dialog,
 #recoverVaultModal.show .modal-dialog,
 #stickyModal.show .modal-dialog {
   animation: slideInDialog 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;

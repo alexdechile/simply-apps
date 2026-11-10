@@ -1,5 +1,32 @@
 # Bitácora de Alex - Simply Apps
 
+## Último Realizado [2026-10-25]
+- **Escudo Anti-Alucinaciones en Modelos Gratuitos y Clasificación Visual de Tiers:**
+  - **Causa raíz de alucinaciones en modelos free:** El prompt anterior inducía historias ficticias mediante preguntas sugerentes (*"¿Fue una llamada a las 1 a.m.? ¿Quién desafió a quién? Usa citas textuales entre comillas..."*). Al usar modelos ligeros o gratuitos (7B/8B o OpenRouter Free), estos inventaban anécdotas o citas falsas para cumplir con las preguntas del prompt cuando no había entrevistas reales disponibles.
+  - **Solución implementada:**
+    1. *Reescritura de Prompts del Sistema:* En [server.js](file:///home/alexdechile/proyectos/simply-apps/server.js), se establecieron **Reglas de Oro Anti-Alucinación** estrictas. Se prohibió expresamente inventar citas, llamadas nocturnas o dramatizaciones. Si un dato no figura en las fuentes, se exige la omisión en vez de la invención.
+    2. *Banderas Críticas en Contexto (`userContent`):* Si la búsqueda no extrae entrevistas reales, se inyecta un aviso explícito `[NO HAY ENTREVISTAS REGISTRADAS: Prohibido terminantemente inventar citas entre comillas o dramatizaciones]`.
+    3. *Habilitación Plena de Capas Gratuitas de OpenRouter:* Dado que los prompts blindados previenen exitosamente las alucinaciones sin importar el tamaño del modelo, se eliminaron las advertencias restrictivas o peyorativas en la UI ([script.js](file:///home/alexdechile/proyectos/simply-apps/script.js) e [index.html](file:///home/alexdechile/proyectos/simply-apps/index.html)), catalogando OpenRouter Free como una opción 🎁 de primera categoría:
+       - ⭐ **DeepInfra:** `Llama 3.3 70B Turbo (Estable / Económico)`
+       - ⚡ **Google Gemini:** `Gemini 2.0 Flash (Rápido)`
+       - 🎁 **OpenRouter Free:** `Capa Gratuita (Sin costo / Blindado por prompt)`
+- **Solución a Error 502 Bad Gateway e Implementación de Modal Guiado para Crónicas (Tech / Noticias / Música):**
+  - **Causa raíz del 502 en Tech:**
+    1. *Desajuste de Timeouts:* En [server.js](file:///home/alexdechile/proyectos/simply-apps/server.js), `server.timeout` estaba fijado en 120s, mientras que `runAichat` tenía un timeout de intento de 45s con 3 reintentos (45s × 3 = 135s). Al generar crónicas extensas con búsquedas profundas, el tiempo acumulado superaba los 120s, Express cerraba el socket TCP abruptamente y Nginx respondía con 502 Bad Gateway.
+    2. *Parámetros erróneos en researcher.py:* En `/tech/completo` se pasaba `['--depth', '1']`, pero `researcher.py` espera argumentos posicionales `[query, depth, category]`. Se corrigió para pasar `['sencilla', 'tecnologia']`.
+    3. *Carga de entorno en Python:* Se incorporó `_load_env_file()` en [buscadores/scraper.py](file:///home/alexdechile/proyectos/simply-apps/buscadores/scraper.py) para asegurar que las credenciales de Google Search API estén disponibles en todos los subprocesos de Python.
+  - **Solución Backend:** Se incrementó `server.timeout` a 300s (alineado con los 300s de Nginx), se ajustó el timeout de `runAichat` a 90s/120s según la complejidad de la tarea, y se habilitó la recepción dinámica del parámetro `model` en las peticiones.
+  - **Nuevo Modal de Generación Guiada (`#topicGenerateModal`):**
+    - Se reemplazó el `prompt()` nativo del navegador por un modal interactivo en [index.html](file:///home/alexdechile/proyectos/simply-apps/index.html) y [script.js](file:///home/alexdechile/proyectos/simply-apps/script.js).
+    - El modal explica explícitamente el flujo de 2 fases (Búsqueda de fuentes en Google + Redacción con IA).
+    - Pide el tema/pregunta con un input estilizado.
+    - Muestra un selector desplegable con el modelo de IA que se utilizará, preseleccionando el actual pero permitiendo elegir libremente alternativas (DeepInfra, OpenRouter, Gemini) al vuelo.
+    - Aplica de forma consistente a 💻 Tech, 📰 Noticias y 🎵 Música.
+    - Se renombró el botón `🎵 Post` a **`🎵 Canción`** en la barra superior para eliminar la ambigüedad y dejarlo evidente junto a Tech y News.
+  - **Carpeta de Snapshots para Agentes Visuales:**
+    - Se creó el directorio [snapshots/](file:///home/alexdechile/proyectos/simply-apps/snapshots/) con capturas reales de la aplicación (`01_vista_principal.png`, `02_modal_tech.png`, `03_modal_cancion.png`, `04_modal_sesiones.png`) y un script de regeneración con Playwright.
+
+
 ## Último Realizado [2026-10-24]
 - **Estandarización de IA, Poda de Deuda Técnica y Optimización de Rendimiento:**
   - **Estrategia y Arquitectura Homelab:** Se definió la app como 100% privada para el homelab de Don Alex. Se eliminaron por completo las referencias y dependencias a NVIDIA NIM (por su volatilidad y rotación de IDs que rompían los generadores con error 404) y Ollama / IA local (evitando consumo inviable de RAM/CPU en esta máquina sin GPU).
