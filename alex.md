@@ -1,6 +1,14 @@
 # Bitácora de Alex - Simply Apps
 
-## Último Realizado [2026-10-25]
+## Último Realizado [2026-11-10]
+- **Botón "🧠 Pensar" convertido en desplegable, igual que "⚡ Recetas":**
+  - Se eliminó el comportamiento confuso de doble clic (primer clic mostraba botones de modo inyectados en el HTML, segundo clic ejecutaba). Ese contenedor dinámico `#pensarModes`, `selectThinkingMode()`, `createThinkingModesUI()` y el `onclick` sobreescrito ya no existen.
+  - Ahora `#pensarBtn` es un `dropdown-toggle` Bootstrap con cuatro opciones: 📱 Reescribir para Facebook, 🔍 Analizar en profundidad, ⚡ Sintetizar ideas clave y 📊 Crítica (abogado del diablo). Un clic en la opción ejecuta el modo al instante.
+  - Todos los modos pasan por el **mismo modal de previsualización que las Recetas** (`showAIPreviewModal`): revisar → "Inyectar en el editor" o "Añadir al final", o cancelar sin tocar el borrador. Se eliminó el modal propio `showThinkingResult()`.
+  - Cada modo tiene su propio `systemPrompt`: el modo Facebook conserva el prompt del tono activo, mientras que los modos analíticos usan personas propias (analista, editor, crítico) para no mezclar análisis con reescritura de estilo.
+  - Si la IA devuelve exactamente el mismo texto, se avisa en lugar de abrir un modal vacío. El botón muestra "🔍 Pensando..." y se restaura solo al terminar (probado con Playwright sobre los cuatro modos).
+
+## Realizado [2026-10-25]
 - **Escudo Anti-Alucinaciones en Modelos Gratuitos y Clasificación Visual de Tiers:**
   - **Causa raíz de alucinaciones en modelos free:** El prompt anterior inducía historias ficticias mediante preguntas sugerentes (*"¿Fue una llamada a las 1 a.m.? ¿Quién desafió a quién? Usa citas textuales entre comillas..."*). Al usar modelos ligeros o gratuitos (7B/8B o OpenRouter Free), estos inventaban anécdotas o citas falsas para cumplir con las preguntas del prompt cuando no había entrevistas reales disponibles.
   - **Solución implementada:**

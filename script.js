@@ -31,6 +31,10 @@
     recoverVaultBtn: document.getElementById('recoverVaultBtn'),
     editor: document.getElementById('editor'),
     pensar: document.getElementById('pensarBtn'),
+    pensarFacebook: document.getElementById('pensarFacebookBtn'),
+    pensarAnalyze: document.getElementById('pensarAnalyzeBtn'),
+    pensarSynth: document.getElementById('pensarSynthBtn'),
+    pensarCritique: document.getElementById('pensarCritiqueBtn'),
     genX: document.getElementById('genXBtn'),
     genLI: document.getElementById('genLIBtn'),
     formatMenu: document.getElementById('format-menu'),
@@ -1171,222 +1175,139 @@ Tu tarea: reescribe el borrador con esta objetividad analítica. Devuelve solo e
     }
   }
   /**
- * MODOS DE PENSAMIENTO PARA EL BOTÓN "PENSAR"
- * Implementa la arquitectura del Idea Generator 2.0 adaptada a un solo modelo IA
- * usando diferentes "personas" por prompt en lugar de múltiples modelos.
- * 
- * Modos disponibles:
- * - analyze: Análisis profundo (desglosa ideas, suposiciones, lagunas)
- * - synth: Síntesis (combina ideas en visión unificada)
- * - critique: Crítica (juega abogado del diablo, encuentra debilidades)
- * - facebook: Reescribe para Facebook (modo original)
- */
+   * MODOS DE PENSAMIENTO PARA EL BOTÓN "PENSAR"
+   * Implementa la arquitectura del Idea Generator 2.0 adaptada a un solo modelo IA
+   * usando diferentes "personas" por prompt en lugar de múltiples modelos.
+   *
+   * Modos disponibles:
+   * - analyze: Análisis profundo (desglosa ideas, suposiciones, lagunas)
+   * - synth: Síntesis (combina ideas en visión unificada)
+   * - critique: Crítica (juega abogado del diablo, encuentra debilidades)
+   * - facebook: Reescribe para Facebook (modo original)
+   */
 
-// Definir los modos de pensamiento y sus prompts (reutiliza estructura existente)
+// Modos de pensamiento: cada uno trae su propio system prompt, el título del
+// modal de previsualización y si el resultado reemplaza o se añade al borrador.
 const thinkingModes = {
-  analyze: {
-    name: 'Analizar',
-    icon: '🔍',
-    prompt: `Analiza profundamente este texto. Identifica las ideas principales, sus suposiciones, lagunas en el razonamiento y posibles sesgos. Sé exhaustivo pero conciso. No agregues información nueva que no esté implícita.`,
-    key: 'analyze'
-  },
-  synth: {
-    name: 'Sintetizar', 
-    icon: '⚡',
-    prompt: `Sintetiza y combina las ideas clave de este texto en una visión unificada. Encuentra los hilos comunes y crea una perspectiva integradora. Resume el esencia sin perder matices importantes.`,
-    key: 'synth'
-  },
-  critique: {
-    name: 'Crítica',
-    icon: '📊', 
-    prompt: `Juega al abogado del diablo. Encuentra debilidades, contradicciones, y áreas que podrían mejorarse. Sé constructivo y específico. Identifica qué partes son más fuertes y cuáles podrían reforzarse. No seas redundante.`,
-    key: 'critique'
-  },
   facebook: {
     name: 'Facebook',
     icon: '📱',
+    title: '📱 Texto reescrito para Facebook',
+    system: null, // null = usa el prompt del tono seleccionado
     prompt: `Reescribe el siguiente borrador para Facebook aplicando personalidad y reglas de estilo. Preserva el mensaje principal, los argumentos clave y la intención del original. No agregues información nueva.`,
-    key: 'facebook'
+    actionLabel: 'Inyectar en el editor',
+    append: false
+  },
+  analyze: {
+    name: 'Analizar',
+    icon: '🔍',
+    title: '🔍 Análisis en profundidad',
+    system: `Eres un analista editorial riguroso. Respondes SIEMPRE en el mismo idioma del texto recibido, en markdown claro y ordenado. Tu trabajo es observar y explicar el texto, NUNCA reescribirlo ni cambiarle el estilo. No inventes datos, citas ni fuentes que no estén en el borrador.`,
+    prompt: `Analiza profundamente este texto. Identifica las ideas principales, sus suposiciones, lagunas en el razonamiento y posibles sesgos. Sé exhaustivo pero conciso. No agregues información nueva que no esté implícita.`,
+    actionLabel: 'Añadir al final del texto',
+    append: true
+  },
+  synth: {
+    name: 'Sintetizar',
+    icon: '⚡',
+    title: '⚡ Síntesis unificada',
+    system: `Eres un editor que integra y ordena ideas. Respondes en el mismo idioma del texto recibido, en markdown, sin inventar información. Tu tarea es devolver una nueva versión del texto que resulte más clara y cohesionada.`,
+    prompt: `Sintetiza y combina las ideas clave de este texto en una visión unificada. Encuentra los hilos comunes y crea una perspectiva integradora. Resume la esencia sin perder matices importantes.`,
+    actionLabel: 'Inyectar en el editor',
+    append: false
+  },
+  critique: {
+    name: 'Crítica',
+    icon: '📊',
+    title: '📊 Crítica constructiva',
+    system: `Eres un crítico editorial constructivo. Respondes en el mismo idioma del texto recibido, en markdown, señalando fortalezas y debilidades concretas del borrador. No reescribas el texto completo ni inventes datos.`,
+    prompt: `Juega al abogado del diablo. Encuentra debilidades, contradicciones, y áreas que podrían mejorarse. Sé constructivo y específico. Identifica qué partes son más fuertes y cuáles podrían reforzarse. No seas redundante.`,
+    actionLabel: 'Añadir al final del texto',
+    append: true
   }
 };
 
-// Estado actual del modo de pensamiento
-let currentThinkingMode = 'facebook'; // Modo por defecto
-
-// Interfaz de selección de modos (creada dinámicamente)
-function createThinkingModesUI() {
-  const modesContainer = document.getElementById('pensarModes');
-  if (modesContainer) return; // Ya existe
-  
-  const container = document.createElement('div');
-  container.id = 'pensarModes';
-  container.style.cssText = `
-    display: none;
-    margin: 8px 0;
-    gap: 4px;
-  `;
-  
-  Object.entries(thinkingModes).forEach(([key, mode]) => {
-    const btn = document.createElement('button');
-    btn.className = 'mode-btn';
-    btn.dataset.mode = key;
-    btn.style.cssText = `
-      background: none;
-      border: 1px solid #ddd;
-      padding: 4px 8px;
-      font-size: 12px;
-      cursor: pointer;
-      border-radius: 4px;
-      color: #555;
-    `;
-    btn.textContent = `${mode.icon} ${mode.name}`;
-    btn.addEventListener('click', () => selectThinkingMode(key));
-    container.appendChild(btn);
-  });
-  
-  // Insertar después del botón pensar
-  const pensarBtn = document.getElementById('pensarBtn');
-  pensarBtn.parentNode.insertBefore(container, pensarBtn.nextSibling);
-}
-
-function selectThinkingMode(modeKey) {
-  // Actualizar UI visual
-  document.querySelectorAll('.mode-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.mode === modeKey);
-  });
-  
-  currentThinkingMode = modeKey;
-  
-  // Ejecutar pensamiento con ese modo
-  pensarConModo(modeKey);
-}
-
-async function pensarConModo(modeKey) {
+/**
+ * Ejecuta un modo de pensamiento y muestra el resultado en el modal de
+ * previsualización compartido (el mismo que usan las Recetas).
+ */
+async function pensarConModo(modeKey, sourceBtn) {
   const mode = thinkingModes[modeKey];
   if (!mode) return;
-  
+
   const text = easyMDE.value();
   if (!text.trim()) return;
 
+  const originalBtnHtml = sourceBtn ? sourceBtn.innerHTML : '';
+  const originalToggleHtml = el.pensar.innerHTML;
+  if (sourceBtn) {
+    sourceBtn.innerHTML = `${mode.icon} Pensando...`;
+    sourceBtn.disabled = true;
+  }
+  el.pensar.innerHTML = `${mode.icon} Pensando...`;
+  el.pensar.disabled = true;
   state.isThinking = true;
-  el.pensar.textContent = `${mode.icon} Pensando ${mode.name}...`;
 
   try {
-    // Usar el systemPrompt actual (de tonos) combinado con el prompt del modo
+    // El modo Facebook reutiliza el prompt del tono; los modos analíticos usan
+    // su propio system prompt para no mezclar análisis con reescritura de estilo.
     const tonePromptEl = el.prompts[state.currentTone];
-    const systemPrompt = tonePromptEl ? tonePromptEl.value : defaultPrompts[state.currentTone];
-    
+    const tonePrompt = tonePromptEl ? tonePromptEl.value : defaultPrompts[state.currentTone];
+    const systemPrompt = mode.system || tonePrompt;
+
     const userInstruction = `${mode.prompt}
 
 BORRADOR:
 ${text}`;
 
     const result = await callAI(systemPrompt, userInstruction);
-    
-    // Limpiar resultado (similar a como se hace para Facebook)
     const cleanedResult = result.replace(/^```markdown\n?/g, '').replace(/```$/g, '').trim();
-    
-    // Mostrar en modal en lugar de reemplazar el texto original
-    showThinkingResult(mode, cleanedResult);
-    
+
+    if (!cleanedResult || cleanedResult === text.trim()) {
+      alert(`${mode.icon} La IA no devolvió un resultado distinto del original.`);
+      return;
+    }
+
+    const accept = await showAIPreviewModal(mode.title, cleanedResult, mode.actionLabel, mode.append);
+    if (accept) {
+      const cm = easyMDE.codemirror;
+      if (mode.append) {
+        cm.getDoc().setValue(cm.getValue() + '\n\n---\n\n' + cleanedResult);
+        cm.refresh();
+        cm.scrollTo(0, cm.getScrollInfo().height);
+      } else {
+        cm.getDoc().setValue(cleanedResult);
+        cm.refresh();
+        cm.scrollTo(0, 0);
+      }
+      actualizarVistas();
+    }
   } catch (e) {
     console.error(e);
     alert('Error en la IA: ' + e.message);
-  }
-  finally {
+  } finally {
     state.isThinking = false;
-    el.pensar.textContent = '🧠 Pensar';
-  }
-}
-
-function showThinkingResult(mode, result) {
-  // Crear o reutilizar modal de resultados
-  let modal = document.getElementById('thinkingResultModal');
-  
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'thinkingResultModal';
-    modal.style.cssText = `
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.8);
-      color: white;
-      padding: 20px;
-      z-index: 1000;
-      font-family: sans-serif;
-    `;
-    
-    modal.innerHTML = `
-      <div style="background: #2d3748; padding: 15px; border-radius: 8px; margin: -20px -20px 15px; text-align: center;">
-        <h3 style="margin: 0; color: #68d391;">${mode.icon} ${mode.name}</h3>
-        <button id="closeResultModal" style="float: right; background: none; border: none; color: #888; font-size: 20px; cursor: pointer;">×</button>
-      </div>
-      <div style="max-height: 400px; overflow: auto; background: #1a202c; padding: 15px; border-radius: 8; margin-top: 15px; font-size: 14px;">
-        <pre style="white-space: pre-wrap; color: #cbd5e0;">${result}</pre>
-      </div>
-      <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #4a5568; display: flex; gap: 10px; justify-content: flex-end;">
-        <button id="applyResult" style="background: #3182ce; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px;">Aplicar al editor</button>
-        <button id="copyResult" style="background: #48bb78; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px;">Copiar</button>
-        <button id="closeResult" style="background: #e53e3e; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px;">Cerrar</button>
-      </div>
-    `;
-    
-    document.body.appendChild(modal);
-    
-    // Eventos
-    modal.querySelector('#closeResultModal').addEventListener('click', () => document.body.removeChild(modal));
-    modal.querySelector('#closeResult').addEventListener('click', () => document.body.removeChild(modal));
-    
-    modal.querySelector('#applyResult').addEventListener('click', () => {
-      const cm = easyMDE.codemirror;
-      const scrollInfo = cm.getScrollInfo();
-      cm.getDoc().setValue(result);
-      cm.refresh();
-      cm.scrollTo(scrollInfo.left, 0);
-      document.body.removeChild(modal);
-    });
-    
-    modal.querySelector('#copyResult').addEventListener('click', () => {
-      navigator.clipboard.writeText(result).then(() => {
-        alert('Copiado al portapapeles');
-      });
-      document.body.removeChild(modal);
-    });
-  }
-  
-  // Mostrar modal (ya existe o acaba de crearse)
-  modal.style.display = 'block';
-  
-  // Cerrar al hacer clic fuera
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) document.body.removeChild(modal);
-  });
-}
-
-// Modificar el evento onclick original del botón pensar
-createThinkingModesUI();
-
-el.pensar.onclick = async function() {
-  // Alternar entre mostrar modos o ejecutar modo actual
-  const modesContainer = document.getElementById('pensarModes');
-  
-  if (modesContainer.style.display === 'none' || modesContainer.style.display === '') {
-    // Mostrar selector de modos
-    modesContainer.style.display = 'block';
-    el.pensar.textContent = '🧠 Seleccionar modo';
-  } else {
-    // Ocultar selector y ejecutar modo actual
-    modesContainer.style.display = 'none';
-    el.pensar.textContent = currentThinkingMode !== 'facebook' 
-      ? `${thinkingModes[currentThinkingMode].icon} ${thinkingModes[currentThinkingMode].name}`
-      : '🧠 Pensar';
-    
-    // Si no es el modo Facebook por defecto, ejecutarlo
-    if (currentThinkingMode !== 'facebook') {
-      await pensarConModo(currentThinkingMode);
+    el.pensar.innerHTML = originalToggleHtml;
+    el.pensar.disabled = false;
+    if (sourceBtn) {
+      sourceBtn.innerHTML = originalBtnHtml;
+      sourceBtn.disabled = false;
     }
   }
+}
+
+// Cada opción del desplegable 🧠 Pensar ejecuta su modo directamente.
+const thinkingModeButtons = {
+  facebook: el.pensarFacebook,
+  analyze: el.pensarAnalyze,
+  synth: el.pensarSynth,
+  critique: el.pensarCritique
 };
+
+Object.entries(thinkingModeButtons).forEach(([modeKey, btn]) => {
+  if (!btn) return;
+  btn.addEventListener('click', () => pensarConModo(modeKey, btn));
+});
 
 
   // --- MODAL DE GENERACIÓN GUIADA (Tech / Noticias / Música) ---

@@ -1,6 +1,30 @@
 # Mejora del Botón "Pensar" en Simply Apps
 
-## Estado Actual
+## ✅ Implementado [2026-11-10]
+
+El botón "Pensar" ya no alterna estados raros con doble clic. Ahora es un **desplegable
+Bootstrap igual que "⚡ Recetas"**: se abre, eliges un modo y se ejecuta de inmediato.
+
+| Opción del menú | Modo | Resultado al aceptar |
+|---|---|---|
+| 📱 Reescribir para Facebook | usa el prompt del tono activo | reemplaza el borrador |
+| 🔍 Analizar en profundidad | system prompt analítico propio | se añade al final |
+| ⚡ Sintetizar ideas clave | system prompt de editor | reemplaza el borrador |
+| 📊 Crítica (abogado del diablo) | system prompt crítico | se añade al final |
+
+Detalles de implementación:
+- Se eliminó el contenedor dinámico `#pensarModes`, `selectThinkingMode()`,
+  `createThinkingModesUI()`, `showThinkingResult()` y el `onclick` de doble clic.
+- Todos los modos usan el mismo modal de previsualización compartido
+  (`showAIPreviewModal`) que las Recetas: revisar → aceptar/cancelar.
+- Los modos analíticos ya no reutilizan el prompt de tono (que reescribe estilo);
+  cada uno tiene su propio system prompt y responde en el idioma del texto.
+- Si la IA devuelve lo mismo que ya está en el editor, avisa en vez de abrir el modal.
+
+Queda pendiente como idea futura: modo "Innovación 💡", branching/crossing y jurado
+calibrado (secciones de abajo).
+
+## Estado Anterior
 
 El botón "Pensar" (`pensarBtn`) actualmente:
 - Llama a `consultarIA()` cuando se hace clic
